@@ -6,13 +6,50 @@ class CalculatorScreen extends StatefulWidget {
   _CalculatorScreenState createState() => _CalculatorScreenState();
 }
 
-class _CalculatorScreenState extends State<CalculatorScreen> {
+class _CalculatorScreenState extends State<CalculatorScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final formatter = NumberFormat.currency(symbol: '\$');
   double _capital = 0.0;
   double _rate = 0.0;
   int _rounds = 0;
   double _result = 0.0;
+  bool _showResult = false;
+
+  late AnimationController _animationController;
+  late AnimationController _resultAnimationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    _resultAnimationController = AnimationController(
+      duration: Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _resultAnimationController, curve: Curves.elasticOut),
+    );
+    _slideAnimation = Tween<Offset>(begin: Offset(0, 0.3), end: Offset.zero).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _resultAnimationController.dispose();
+    super.dispose();
+  }
 
   void _calculate() {
     if (_formKey.currentState!.validate()) {
@@ -23,43 +60,300 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       }
       setState(() {
         _result = total;
+        _showResult = true;
       });
+      _resultAnimationController.forward();
     }
+  }
+
+  void _reset() {
+    setState(() {
+      _showResult = false;
+      _result = 0.0;
+    });
+    _resultAnimationController.reset();
+    _formKey.currentState?.reset();
+  }
+
+  Widget _buildInputCard({
+    required String title,
+    required String hint,
+    required IconData icon,
+    required TextInputType keyboardType,
+    required FormFieldSetter<String> onSaved,
+    required FormFieldValidator<String> validator,
+    String? suffix,
+  }) {
+    return Card(
+      elevation: 8,
+      shadowColor: Colors.black12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Color(0xFF1E3A8A).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: Color(0xFF1E3A8A), size: 20),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            TextFormField(
+              decoration: InputDecoration(
+                hintText: hint,
+                suffixText: suffix,
+                suffixStyle: TextStyle(
+                  color: Color(0xFF1E3A8A),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              keyboardType: keyboardType,
+              onSaved: onSaved,
+              validator: validator,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Calculadora Interés Compuesto')),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                decoration: InputDecoration(labelText: 'Capital inicial'),
-                keyboardType: TextInputType.number,
-                onSaved: (value) => _capital = double.parse(value!),
-                validator: (value) => value!.isEmpty ? 'Requerido' : null,
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: Text(
+          'Calculadora de Interés',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Color(0xFF1E3A8A),
+        elevation: 0,
+        iconTheme: IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+            ),
+          ),
+        ),
+      ),
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  // Header
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0xFF1E3A8A).withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.calculate, size: 48, color: Colors.white),
+                        SizedBox(height: 12),
+                        Text(
+                          'Calculadora de Interés Compuesto',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Calcula el crecimiento de tu inversión',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 24),
+
+                  // Inputs
+                  _buildInputCard(
+                    title: 'Capital Inicial',
+                    hint: 'Ingresa el monto inicial',
+                    icon: Icons.attach_money,
+                    keyboardType: TextInputType.number,
+                    onSaved: (value) => _capital = double.parse(value!),
+                    validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
+                    suffix: 'USD',
+                  ),
+                  SizedBox(height: 16),
+
+                  _buildInputCard(
+                    title: 'Tasa de Interés',
+                    hint: 'Porcentaje por vuelta',
+                    icon: Icons.percent,
+                    keyboardType: TextInputType.number,
+                    onSaved: (value) => _rate = double.parse(value!),
+                    validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
+                    suffix: '%',
+                  ),
+                  SizedBox(height: 16),
+
+                  _buildInputCard(
+                    title: 'Número de Vueltas',
+                    hint: 'Cantidad de períodos',
+                    icon: Icons.repeat,
+                    keyboardType: TextInputType.number,
+                    onSaved: (value) => _rounds = int.parse(value!),
+                    validator: (value) => value!.isEmpty ? 'Campo requerido' : null,
+                  ),
+                  SizedBox(height: 32),
+
+                  // Botones
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          height: 56,
+                          child: ElevatedButton.icon(
+                            onPressed: _calculate,
+                            icon: Icon(Icons.calculate, color: Colors.white),
+                            label: Text(
+                              'Calcular',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF1E3A8A),
+                              elevation: 8,
+                              shadowColor: Color(0xFF1E3A8A).withOpacity(0.4),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16),
+                      Container(
+                        height: 56,
+                        child: OutlinedButton.icon(
+                          onPressed: _reset,
+                          icon: Icon(Icons.refresh, color: Color(0xFF1E3A8A)),
+                          label: Text(
+                            'Limpiar',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1E3A8A),
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Color(0xFF1E3A8A), width: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 32),
+
+                  // Resultado
+                  if (_showResult)
+                    ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.green[400]!, Colors.green[600]!],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.3),
+                              blurRadius: 20,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.trending_up, size: 48, color: Colors.white),
+                            SizedBox(height: 16),
+                            Text(
+                              'Resultado Final',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              formatter.format(_result),
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Ganancia: ${formatter.format(_result - _capital)}',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              TextFormField(
-                decoration: InputDecoration(labelText: 'Porcentaje por vuelta (%)'),
-                keyboardType: TextInputType.number,
-                onSaved: (value) => _rate = double.parse(value!),
-                validator: (value) => value!.isEmpty ? 'Requerido' : null,
-              ),
-              TextFormField(
-                decoration: InputDecoration(labelText: 'Cantidad de vueltas'),
-                keyboardType: TextInputType.number,
-                onSaved: (value) => _rounds = int.parse(value!),
-                validator: (value) => value!.isEmpty ? 'Requerido' : null,
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(onPressed: _calculate, child: Text('Calcular')),
-              SizedBox(height: 20),
-              Text('Resultado: ${formatter.format(_result)}', style: TextStyle(fontSize: 18)),
-            ],
+            ),
           ),
         ),
       ),

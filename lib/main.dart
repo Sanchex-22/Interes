@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:interest_compound_game/screens/calculator_screen.dart';
 import 'package:interest_compound_game/screens/chat_screen.dart';
+import 'package:interest_compound_game/screens/progress_screen.dart';
 import 'package:interest_compound_game/screens/ranking_screen.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
@@ -33,6 +34,7 @@ class MyApp extends StatelessWidget {
         '/calculator': (context) => CalculatorScreen(),
         '/chat': (context) => ChatScreen(),
         '/ranking': (context) => RankingScreen(), 
+        '/progress': (context) => ProgressScreen(), 
       },
     );
   }

@@ -1,37 +1,60 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Importa firebase_auth
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
   _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  String _email = ''; // Cambiamos a email
+  String _email = '';
   String _password = '';
-  bool _isLoading = false; // Para manejar el estado de carga
+  bool _isLoading = false;
+  bool _isLogin = true;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance; // Instancia de FirebaseAuth
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _slideAnimation = Tween<Offset>(begin: Offset(0, 0.3), end: Offset.zero).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       setState(() {
-        _isLoading = true; // Inicia el estado de carga
+        _isLoading = true;
       });
 
       try {
-        // Intenta iniciar sesión con correo y contraseña
         UserCredential userCredential = await _auth.signInWithEmailAndPassword(
           email: _email,
           password: _password,
         );
-        // Si el inicio de sesión es exitoso, navega al dashboard
         print('Inicio de sesión exitoso: ${userCredential.user!.email}');
         Navigator.pushReplacementNamed(context, '/dashboard');
       } on FirebaseAuthException catch (e) {
-        // Manejo de errores de Firebase
         String message;
         if (e.code == 'user-not-found') {
           message = 'No se encontró ningún usuario con ese correo electrónico.';
@@ -42,18 +65,15 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           message = 'Error de inicio de sesión: ${e.message}';
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        _showErrorSnackBar(message);
       } finally {
         setState(() {
-          _isLoading = false; // Finaliza el estado de carga
+          _isLoading = false;
         });
       }
     }
   }
 
-  // Opcional: Función para registrar un nuevo usuario si no existe
   Future<void> _register() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
@@ -67,9 +87,10 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _password,
         );
         print('Registro exitoso: ${userCredential.user!.email}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Usuario registrado exitosamente. Ahora puedes iniciar sesión.')),
-        );
+        _showSuccessSnackBar('Usuario registrado exitosamente. Ahora puedes iniciar sesión.');
+        setState(() {
+          _isLogin = true;
+        });
       } on FirebaseAuthException catch (e) {
         String message;
         if (e.code == 'weak-password') {
@@ -79,9 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           message = 'Error de registro: ${e.message}';
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        _showErrorSnackBar(message);
       } finally {
         setState(() {
           _isLoading = false;
@@ -90,58 +109,202 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red[600],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green[600],
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Iniciar Sesión', style: TextStyle(fontSize: 24)),
-                SizedBox(height: 20),
-                TextFormField(
-                  decoration: InputDecoration(
-                    labelText: 'Correo Electrónico', // Cambiado a correo electrónico
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  onSaved: (value) => _email = value!.trim(), // Usamos trim() para limpiar espacios
-                  validator: (value) => value!.isEmpty ? 'Campo requerido' : (value.contains('@') ? null : 'Correo electrónico inválido'),
-                ),
-                SizedBox(height: 16),
-                TextFormField(
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña',
-                    border: OutlineInputBorder(),
-                  ),
-                  obscureText: true,
-                  onSaved: (value) => _password = value!,
-                  validator: (value) => value!.isEmpty ? 'Campo requerido' : (value.length < 6 ? 'La contraseña debe tener al menos 6 caracteres' : null),
-                ),
-                SizedBox(height: 20),
-                _isLoading
-                    ? CircularProgressIndicator() // Muestra un indicador de carga
-                    : Column(
-                        children: [
-                          ElevatedButton(
-                            onPressed: _login,
-                            child: Text('Entrar'),
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: Size(double.infinity, 50), // Botón más ancho
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF1E3A8A),
+              Color(0xFF3B82F6),
+              Color(0xFF60A5FA),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(24.0),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Card(
+                    elevation: 20,
+                    shadowColor: Colors.black26,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Logo/Icon
+                            Container(
+                              width: 80,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                                ),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.blue.withOpacity(0.3),
+                                    blurRadius: 20,
+                                    offset: Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.trending_up,
+                                size: 40,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 10),
-                          TextButton(
-                            onPressed: _register, // Botón para registrar
-                            child: Text('¿No tienes cuenta? Regístrate aquí'),
-                          ),
-                        ],
+                            SizedBox(height: 24),
+                            Text(
+                              _isLogin ? 'Bienvenido' : 'Crear Cuenta',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Interés Compuesto Game',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            SizedBox(height: 32),
+                            TextFormField(
+                              decoration: InputDecoration(
+                                labelText: 'Correo Electrónico',
+                                prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF1E3A8A)),
+                                labelStyle: TextStyle(color: Colors.grey[700]),
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                              onSaved: (value) => _email = value!.trim(),
+                              validator: (value) => value!.isEmpty 
+                                  ? 'Campo requerido' 
+                                  : (value.contains('@') ? null : 'Correo electrónico inválido'),
+                            ),
+                            SizedBox(height: 20),
+                            TextFormField(
+                              decoration: InputDecoration(
+                                labelText: 'Contraseña',
+                                prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF1E3A8A)),
+                                labelStyle: TextStyle(color: Colors.grey[700]),
+                              ),
+                              obscureText: true,
+                              onSaved: (value) => _password = value!,
+                              validator: (value) => value!.isEmpty 
+                                  ? 'Campo requerido' 
+                                  : (value.length < 6 ? 'La contraseña debe tener al menos 6 caracteres' : null),
+                            ),
+                            SizedBox(height: 32),
+                            _isLoading
+                                ? Container(
+                                    width: 50,
+                                    height: 50,
+                                    child: CircularProgressIndicator(
+                                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E3A8A)),
+                                      strokeWidth: 3,
+                                    ),
+                                  )
+                                : Column(
+                                    children: [
+                                      Container(
+                                        width: double.infinity,
+                                        height: 56,
+                                        child: ElevatedButton(
+                                          onPressed: _isLogin ? _login : _register,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Color(0xFF1E3A8A),
+                                            foregroundColor: Colors.white,
+                                            elevation: 8,
+                                            shadowColor: Color(0xFF1E3A8A).withOpacity(0.4),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(16),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            _isLogin ? 'Iniciar Sesión' : 'Registrarse',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(height: 16),
+                                      TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _isLogin = !_isLogin;
+                                          });
+                                        },
+                                        child: RichText(
+                                          text: TextSpan(
+                                            style: TextStyle(color: Colors.grey[600]),
+                                            children: [
+                                              TextSpan(
+                                                text: _isLogin 
+                                                    ? '¿No tienes cuenta? ' 
+                                                    : '¿Ya tienes cuenta? ',
+                                              ),
+                                              TextSpan(
+                                                text: _isLogin ? 'Regístrate' : 'Inicia sesión',
+                                                style: TextStyle(
+                                                  color: Color(0xFF1E3A8A),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ],
+                        ),
                       ),
-              ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
