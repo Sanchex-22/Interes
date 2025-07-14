@@ -51,6 +51,7 @@ class MyApp extends StatelessWidget {
         '/chat': (context) => ChatScreen(),
         '/ranking': (context) => RankingScreen(),
         '/progress': (context) => ProgressScreen(),
+        '/dashboard': (context) => Dashboard(),
         // ... otras rutas
       },
     );

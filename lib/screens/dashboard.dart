@@ -6,6 +6,7 @@ import 'package:interest_compound_game/screens/login_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
 import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
 import 'dart:async'; // Import for StreamSubscription
+import 'package:shared_preferences/shared_preferences.dart'; // Importa SharedPreferences
 
 class Dashboard extends StatefulWidget {
   @override
@@ -35,6 +36,9 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     }
     return '';
   }
+
+  // Getter para verificar si el usuario es anónimo
+  bool get _isUserAnonymous => _auth.currentUser?.isAnonymous ?? true;
 
   @override
   void initState() {
@@ -69,7 +73,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
   }
 
   // Setup real-time listener for user profile
-  void _setupUserProfileListener() {
+  void _setupUserProfileListener() async { // Marcado como async
     _currentUser = _auth.currentUser;
     if (_currentUser == null) {
       setState(() {
@@ -78,6 +82,28 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
       });
       print('Dashboard: No hay usuario autenticado para escuchar el perfil.');
       return;
+    }
+
+    // Si el usuario es anónimo, carga los datos de SharedPreferences
+    if (_isUserAnonymous) {
+      final prefs = await SharedPreferences.getInstance();
+      final guestTotalCalculations = prefs.getInt('guest_totalCalculations') ?? 0;
+      final guestCurrentStreak = prefs.getInt('guest_currentStreak') ?? 0;
+
+      setState(() {
+        _userProfile = UserModel(
+          uid: _currentUser!.uid,
+          email: 'invitado@app.com', // Email ficticio para invitado
+          displayName: 'Invitado', // Establece el nombre visible para el invitado
+          registrationDate: DateTime.now(),
+          totalCalculations: guestTotalCalculations,
+          currentStreak: guestCurrentStreak,
+          role: 'guest', // Establece el rol como 'guest'
+        );
+        _isProfileLoading = false;
+      });
+      print('Dashboard: Usuario anónimo. Perfil cargado desde SharedPreferences.');
+      return; // Sale de la función, no se necesita listener de Firestore para invitados
     }
 
     // Cancel any existing subscription before setting up a new one
@@ -195,72 +221,107 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     }
   }
 
+  // Diálogo para notificar que se requiere inicio de sesión
+  void _showLoginRequiredDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Función Restringida'),
+          content: Text('Necesitas iniciar sesión o registrarte para acceder a esta función.'),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            ElevatedButton(
+              child: Text('Iniciar Sesión / Registrarse'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Cierra el diálogo
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => LoginScreen()),
+                  (Route<dynamic> route) => false,
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildFeatureCard({
     required IconData icon,
     required String title,
     required String subtitle,
     required Color color,
     required VoidCallback onTap,
+    bool isEnabled = true, // Nuevo parámetro para controlar si la tarjeta está habilitada
   }) {
     return Card(
-      elevation: 4, // Reducido de 8 a 4
-      shadowColor: color.withOpacity(0.2), // Sombra más sutil
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // Reducido de 15 a 12
+      elevation: 4,
+      shadowColor: color.withOpacity(0.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12), // Reducido de 15 a 12
-        child: Container(
-          padding: EdgeInsets.all(10), // Reducido de 12 a 10
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12), // Reducido de 15 a 12
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                color.withOpacity(0.1),
-                color.withOpacity(0.05),
+        onTap: isEnabled ? onTap : _showLoginRequiredDialog, // Llama al diálogo si no está habilitado
+        borderRadius: BorderRadius.circular(12),
+        child: Opacity( // Aplica opacidad si no está habilitado
+          opacity: isEnabled ? 1.0 : 0.5,
+          child: Container(
+            padding: EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.1),
+                  color.withOpacity(0.05),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 45,
+                  height: 45,
+                  decoration: BoxDecoration(
+                    color: isEnabled ? color : Colors.grey, // Cambia el color del círculo a gris si está deshabilitado
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isEnabled ? color : Colors.grey).withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 24),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isEnabled ? Colors.grey[800] : Colors.grey[600], // Ajusta el color del texto del título
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isEnabled ? Colors.grey[600] : Colors.grey[500], // Ajusta el color del texto del subtítulo
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ],
             ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 45, // Reducido de 50 a 45
-                height: 45, // Reducido de 50 a 45
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.2), // Sombra más sutil
-                      blurRadius: 8, // Reducido de 10 a 8
-                      offset: Offset(0, 4), // Ajustado el offset de la sombra
-                    ),
-                  ],
-                ),
-                child: Icon(icon, color: Colors.white, size: 24), // Reducido de 28 a 24
-              ),
-              SizedBox(height: 8), // Reducido de 10 a 8
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14, // Reducido de 16 a 14
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 4), // Reducido de 6 a 4
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 10, // Reducido de 12 a 10
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
           ),
         ),
       ),
@@ -272,29 +333,48 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     required IconData icon,
     required String value,
     required Color color,
+    bool isEnabled = true, // Añadido isEnabled para las estadísticas
   }) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6), // Padding más compacto
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15), // Fondo sutil
-        borderRadius: BorderRadius.circular(20), // Bordes redondeados
-        border: Border.all(color: color.withOpacity(0.3), width: 1), // Borde ligero
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min, // Ajusta al contenido
-        children: [
-          Icon(icon, color: color, size: 18), // Icono más pequeño
-          SizedBox(width: 6), // Espacio entre icono y texto
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16, // Tamaño de fuente para el valor
-              fontWeight: FontWeight.bold,
-              color: color,
+    return Opacity(
+      opacity: isEnabled ? 1.0 : 0.5, // Atenúa si no está habilitado
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6), // Padding más compacto
+        decoration: BoxDecoration(
+          color: (isEnabled ? color : Colors.grey).withOpacity(0.15), // Fondo sutil, gris si deshabilitado
+          borderRadius: BorderRadius.circular(20), // Bordes redondeados
+          border: Border.all(color: (isEnabled ? color : Colors.grey).withOpacity(0.3), width: 1), // Borde ligero
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min, // Ajusta al contenido
+          children: [
+            Icon(icon, color: isEnabled ? color : Colors.grey, size: 18), // Icono más pequeño, gris si deshabilitado
+            SizedBox(width: 6), // Espacio entre icono y texto
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16, // Tamaño de fuente para el valor
+                fontWeight: FontWeight.bold,
+                color: isEnabled ? color : Colors.grey, // Color de texto, gris si deshabilitado
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  // Widget para los elementos del Drawer con control de habilitación
+  Widget _buildDrawerItem(IconData icon, String title, String route, {bool isEnabled = true}) {
+    return ListTile(
+      leading: Icon(icon, color: isEnabled ? Colors.white : Colors.white54), // Ajusta el color del icono
+      title: Text(
+        title,
+        style: TextStyle(color: isEnabled ? Colors.white : Colors.white54, fontSize: 16), // Ajusta el color del texto
+      ),
+      onTap: isEnabled ? () {
+        Navigator.pop(context);
+        Navigator.pushNamed(context, route);
+      } : _showLoginRequiredDialog, // Llama al diálogo si no está habilitado
     );
   }
 
@@ -365,7 +445,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                     ),
                     SizedBox(height: 12),
                     Text(
-                      _currentUser?.email ?? 'Invitado',
+                     '¡Hola, ${_userProfile?.displayName ?? _currentUser?.email?.split('@')[0] ?? 'Usuario'}!',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -383,9 +463,9 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                 ),
               ),
               _buildDrawerItem(Icons.calculate, 'Calculadora', '/calculator'),
-              _buildDrawerItem(Icons.chat, 'Chat', '/chat'),
-              _buildDrawerItem(Icons.leaderboard, 'Ranking', '/ranking'),
-              _buildDrawerItem(Icons.trending_up, 'Progreso', '/progress'), // Añadido el item de progreso al drawer
+              _buildDrawerItem(Icons.chat, 'Chat', '/chat', isEnabled: !_isUserAnonymous), // Restringido para invitados
+              _buildDrawerItem(Icons.leaderboard, 'Ranking', '/ranking', isEnabled: !_isUserAnonymous), // Restringido para invitados
+              _buildDrawerItem(Icons.trending_up, 'Progreso', '/progress'),
               Divider(color: Colors.white30, thickness: 1),
               ListTile(
                 leading: Icon(Icons.exit_to_app, color: Colors.white),
@@ -422,7 +502,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '¡Hola, ${_currentUser?.email?.split('@')[0] ?? 'Usuario'}!',
+                    '¡Hola, ${_userProfile?.displayName ?? _currentUser?.email?.split('@')[0] ?? 'Usuario'}!', // Modificación aquí
                     style: TextStyle(
                       fontSize: 20, // Reducido de 24 a 20
                       fontWeight: FontWeight.bold,
@@ -430,21 +510,25 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                     ),
                   ),
                   SizedBox(height: 16), // Espacio reducido
-                  // NUEVO: Estadísticas compactas estilo juego
+                  // Estadísticas compactas estilo juego
                   _isProfileLoading
                       ? Center(child: CircularProgressIndicator(color: Colors.white))
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly, // Distribuye el espacio uniformemente
                           children: [
+                            // Las estadísticas de Cálculos y Racha ahora se construyen
+                            // con el valor isEnabled basado en si el usuario es anónimo.
                             _buildCompactStatDisplay(
                               icon: Icons.calculate,
                               value: '${_userProfile?.totalCalculations ?? 0} Cálculos',
-                              color: Colors.amber.shade300, // Color ajustado
+                              color: Colors.amber.shade300,
+                              isEnabled: !_isUserAnonymous, // Deshabilita para invitados
                             ),
                             _buildCompactStatDisplay(
                               icon: Icons.local_fire_department,
                               value: '${_userProfile?.currentStreak ?? 0} Días de Racha',
-                              color: Colors.redAccent.shade200, // Color ajustado
+                              color: Colors.redAccent.shade200,
+                              isEnabled: !_isUserAnonymous, // Deshabilita para invitados
                             ),
                           ],
                         ),
@@ -455,11 +539,11 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
             // Grid de características
             Expanded(
               child: Padding(
-                padding: EdgeInsets.all(16), // Mantenido en 16
+                padding: EdgeInsets.all(16),
                 child: GridView.count(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 12, // Mantenido en 12
-                  mainAxisSpacing: 12, // Mantenido en 12
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
                   children: [
                     _buildFeatureCard(
                       icon: Icons.calculate,
@@ -474,6 +558,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                       subtitle: 'Conversa con otros usuarios',
                       color: Colors.green,
                       onTap: () => Navigator.pushNamed(context, '/chat'),
+                      isEnabled: !_isUserAnonymous, // Restringido para invitados
                     ),
                     _buildFeatureCard(
                       icon: Icons.leaderboard,
@@ -481,6 +566,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                       subtitle: 'Ve tu posición',
                       color: Colors.orange,
                       onTap: () => Navigator.pushNamed(context, '/ranking'),
+                      isEnabled: !_isUserAnonymous, // Restringido para invitados
                     ),
                     _buildFeatureCard(
                       icon: Icons.trending_up,
@@ -520,20 +606,6 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildDrawerItem(IconData icon, String title, String route) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white),
-      title: Text(
-        title,
-        style: TextStyle(color: Colors.white, fontSize: 16),
-      ),
-      onTap: () {
-        Navigator.pop(context);
-        Navigator.pushNamed(context, route);
-      },
     );
   }
 }

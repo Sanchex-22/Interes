@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
 import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
 import 'package:google_sign_in/google_sign_in.dart'; // Importa Google Sign-In
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -17,7 +18,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _isLogin = true;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-final GoogleSignIn signIn = GoogleSignIn.instance;
+  final GoogleSignIn signIn = GoogleSignIn.instance;
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -117,6 +118,128 @@ final GoogleSignIn signIn = GoogleSignIn.instance;
     }
   }
 
+  // NUEVO: Función para manejar la lógica después de cualquier autenticación exitosa
+  Future<void> _handlePostAuthLogic(User user) async {
+    // Primero, asegura que las colecciones de Firestore estén configuradas
+    await _createOrUpdateUserCollections(user);
+    // Luego, intenta migrar cualquier dato de invitado
+    await _migrateGuestData(user);
+    // Finalmente, navega al Dashboard
+    Navigator.pushReplacementNamed(context, '/dashboard');
+  }
+
+  // NUEVO: Función para migrar datos de un usuario invitado a su cuenta de Firebase
+  Future<void> _migrateGuestData(User authenticatedUser) async {
+    final prefs = await SharedPreferences.getInstance();
+    final isGuest = prefs.getBool('isGuest') ?? false;
+
+    if (isGuest) {
+      print('Migrando datos de invitado para ${authenticatedUser.uid}...');
+      final firestore = FirebaseFirestore.instance;
+      final userDocRef = firestore.collection('users').doc(authenticatedUser.uid);
+      final rankingDocRef = firestore.collection('rankings').doc(authenticatedUser.uid);
+
+      try {
+        // Leer datos de invitado
+        final guestTotalCalculations = prefs.getInt('guest_totalCalculations') ?? 0;
+        final guestTotalScore = prefs.getDouble('guest_totalScore') ?? 0.0;
+        final guestCurrentStreak = prefs.getInt('guest_currentStreak') ?? 0;
+        // Para dailyGoals, necesitarías una lógica de serialización/deserialización más compleja
+        // Por ejemplo: List<String> dailyGoalsJson = prefs.getStringList('guest_dailyGoals') ?? [];
+        // Y luego convertir cada string JSON de vuelta a DailyGoalEntry
+
+        // Obtener el perfil de usuario existente en Firestore
+        final userDocSnapshot = await userDocRef.get();
+        UserModel currentUserProfile;
+        if (userDocSnapshot.exists) {
+          currentUserProfile = UserModel.fromFirestore(userDocSnapshot);
+        } else {
+          // Esto no debería ocurrir si _createOrUpdateUserCollections se llamó primero
+          currentUserProfile = UserModel(
+            uid: authenticatedUser.uid,
+            email: authenticatedUser.email!,
+            displayName: authenticatedUser.displayName,
+            registrationDate: DateTime.now(),
+            lastLoginDate: DateTime.now(),
+          );
+        }
+
+        // Combinar datos: tomar el máximo entre los datos existentes y los de invitado
+        final updatedTotalCalculations = (currentUserProfile.totalCalculations ?? 0) + guestTotalCalculations;
+        final updatedTotalScore = (currentUserProfile.totalScore ?? 0.0) + guestTotalScore;
+        final updatedCurrentStreak = (currentUserProfile.currentStreak ?? 0) > guestCurrentStreak
+            ? (currentUserProfile.currentStreak ?? 0)
+            : guestCurrentStreak; // Mantener la racha más alta
+
+        // Actualizar el documento de usuario en Firestore
+        await userDocRef.update({
+          'totalCalculations': updatedTotalCalculations,
+          'totalScore': updatedTotalScore,
+          'currentStreak': updatedCurrentStreak,
+          'lastActivityDate': Timestamp.fromDate(DateTime.now()), // Actualizar la última actividad
+        });
+
+        // Actualizar el documento de ranking en Firestore
+        await rankingDocRef.set({
+          'userName': authenticatedUser.displayName ?? authenticatedUser.email!,
+          'bestScore': updatedTotalScore,
+          'currentStreak': updatedCurrentStreak,
+          'lastUpdated': Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true)); // Usar merge para no sobrescribir todo
+
+        print('Datos de invitado migrados exitosamente a Firestore.');
+        _showSnackBar('¡Progreso de invitado guardado en tu cuenta!', backgroundColor: Colors.blue);
+
+        // Limpiar datos de invitado de SharedPreferences
+        await prefs.remove('isGuest');
+        await prefs.remove('guest_totalCalculations');
+        await prefs.remove('guest_totalScore');
+        await prefs.remove('guest_currentStreak');
+        // await prefs.remove('guest_dailyGoals'); // Si se implementa dailyGoals
+        print('Datos de invitado limpiados de SharedPreferences.');
+
+      } on FirebaseException catch (e) {
+        print('Firestore Error (migrateGuestData): Código: ${e.code}, Mensaje: ${e.message}');
+        _showSnackBar('Error al migrar datos de invitado: ${e.message}', backgroundColor: Colors.red);
+      } catch (e) {
+        print('Error desconocido al migrar datos de invitado: $e');
+        _showSnackBar('Error desconocido al migrar datos de invitado.', backgroundColor: Colors.red);
+      }
+    }
+  }
+
+  // NUEVO: Función para iniciar sesión anónimamente
+  Future<void> _signInAnonymously() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      UserCredential userCredential = await _auth.signInAnonymously();
+      print('Inicio de sesión anónimo exitoso: ${userCredential.user!.uid}');
+
+      // Marcar esta sesión como de invitado en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isGuest', true);
+
+      // Inicializar progreso de invitado en SharedPreferences si no existe
+      if (!prefs.containsKey('guest_totalCalculations')) {
+        await prefs.setInt('guest_totalCalculations', 0);
+        await prefs.setDouble('guest_totalScore', 0.0);
+        await prefs.setInt('guest_currentStreak', 0);
+      }
+
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    } on FirebaseAuthException catch (e) {
+      String message = 'Error al iniciar sesión como invitado: ${e.message}';
+      _showSnackBar(message, backgroundColor: Colors.red);
+      print('Error en inicio de sesión anónimo: ${e.code} - ${e.message}');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
@@ -145,10 +268,8 @@ final GoogleSignIn signIn = GoogleSignIn.instance;
         print('Inicio de sesión exitoso: ${userCredential.user!.email}');
         
         if (userCredential.user != null) {
-          await _createOrUpdateUserCollections(userCredential.user!);
+          await _handlePostAuthLogic(userCredential.user!);
         }
-
-        Navigator.pushReplacementNamed(context, '/dashboard');
       } on FirebaseAuthException catch (e) {
         String message;
         if (e.code == 'user-not-found') {
@@ -197,12 +318,15 @@ final GoogleSignIn signIn = GoogleSignIn.instance;
         }
         // --- FIN ENVÍO DE VERIFICACIÓN DE CORREO ---
 
-        // No creamos colecciones aquí, ya que el usuario debe verificar primero.
-        // La creación de colecciones se hará en _login o _signInWithGoogle después de la verificación.
-        
-        setState(() {
-          _isLogin = true; // Vuelve a la pantalla de login después del registro
-        });
+        // Después del registro, si el usuario era invitado, migrar datos
+        if (userCredential.user != null) {
+          await _handlePostAuthLogic(userCredential.user!);
+        } else {
+          // Si por alguna razón userCredential.user es nulo, simplemente vuelve al login
+          setState(() {
+            _isLogin = true; // Vuelve a la pantalla de login después del registro
+          });
+        }
       } on FirebaseAuthException catch (e) {
         String message;
         if (e.code == 'weak-password') {
@@ -250,12 +374,10 @@ final GoogleSignIn signIn = GoogleSignIn.instance;
       final UserCredential userCredential = await _auth.signInWithCredential(credential);
       print('Inicio de sesión con Google exitoso: ${userCredential.user!.email}');
 
-      // 5. Crear/Actualizar colecciones de usuario en Firestore
+      // 5. Manejar lógica post-autenticación (crear/actualizar colecciones y migrar)
       if (userCredential.user != null) {
-        await _createOrUpdateUserCollections(userCredential.user!);
+        await _handlePostAuthLogic(userCredential.user!);
       }
-
-      Navigator.pushReplacementNamed(context, '/dashboard'); // Navega al dashboard
 
     } on FirebaseAuthException catch (e) {
       String message;
@@ -444,6 +566,33 @@ final GoogleSignIn signIn = GoogleSignIn.instance;
                                               fontSize: 18,
                                               fontWeight: FontWeight.w600,
                                               color: Colors.grey[700],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(height: 16),
+                                      // NUEVO: Botón para continuar como invitado
+                                      Container(
+                                        width: double.infinity,
+                                        height: 56,
+                                        child: OutlinedButton.icon(
+                                          onPressed: _signInAnonymously,
+                                          style: OutlinedButton.styleFrom(
+                                            side: BorderSide(color: Color(0xFF3B82F6).withOpacity(0.5), width: 1),
+                                            backgroundColor: Color(0xFFE0F2F7), // Un color más suave para el invitado
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(16),
+                                            ),
+                                            elevation: 4,
+                                            shadowColor: Colors.blue.shade100,
+                                          ),
+                                          icon: Icon(Icons.person_outline, color: Color(0xFF1E3A8A)),
+                                          label: Text(
+                                            'Continuar como Invitado',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF1E3A8A),
                                             ),
                                           ),
                                         ),
