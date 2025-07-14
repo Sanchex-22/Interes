@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
 import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
+import 'package:google_sign_in/google_sign_in.dart'; // Importa Google Sign-In
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -16,6 +17,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _isLogin = true;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+final GoogleSignIn signIn = GoogleSignIn.instance;
+
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -42,7 +45,20 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     super.dispose();
   }
 
-  // NUEVA FUNCIÓN: Crea o actualiza las colecciones de usuario en Firestore
+  // Función para mostrar mensajes de SnackBar (para errores y éxitos)
+  void _showSnackBar(String message, {Color? backgroundColor, Duration duration = const Duration(seconds: 4)}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: duration,
+      ),
+    );
+  }
+
+  // Crea o actualiza las colecciones de usuario en Firestore
   Future<void> _createOrUpdateUserCollections(User user) async {
     final firestore = FirebaseFirestore.instance;
     final userDocRef = firestore.collection('users').doc(user.uid);
@@ -52,7 +68,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       // 1. Crear/Actualizar el documento del usuario (users collection)
       final userDocSnapshot = await userDocRef.get();
       if (!userDocSnapshot.exists) {
-        // Si el perfil de usuario NO existe, lo creamos con valores por defecto
         print('Firestore: Perfil de usuario no encontrado para ${user.uid}. Creando uno básico.');
         final newUserModel = UserModel(
           uid: user.uid,
@@ -69,7 +84,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         await userDocRef.set(newUserModel.toFirestore());
         print('Firestore: Perfil de usuario creado exitosamente.');
       } else {
-        // Si el perfil de usuario YA existe, solo actualizamos la fecha de último login
         print('Firestore: Perfil de usuario existente para ${user.uid}. Actualizando lastLoginDate.');
         await userDocRef.update({
           'lastLoginDate': Timestamp.fromDate(DateTime.now()),
@@ -94,15 +108,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         print('Firestore: Entrada de ranking ya existe para ${user.uid}.');
       }
 
-      // La colección 'calculations' se creará de forma natural cuando el usuario realice su primer cálculo.
-      // No es necesario crear un documento vacío inicial aquí.
-
     } on FirebaseException catch (e) {
       print('Firestore Error (createOrUpdateUserCollections): Código: ${e.code}, Mensaje: ${e.message}');
-      _showErrorSnackBar('Error al configurar el perfil de usuario en la base de datos: ${e.message}');
+      _showSnackBar('Error al configurar el perfil de usuario en la base de datos: ${e.message}', backgroundColor: Colors.red);
     } catch (e) {
       print('Error desconocido al configurar el perfil de usuario en la base de datos: $e');
-      _showErrorSnackBar('Error desconocido al configurar el perfil de usuario.');
+      _showSnackBar('Error desconocido al configurar el perfil de usuario.', backgroundColor: Colors.red);
     }
   }
 
@@ -118,9 +129,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           email: _email,
           password: _password,
         );
+
+        // --- VERIFICACIÓN DE CORREO ---
+        if (userCredential.user != null && !userCredential.user!.emailVerified) {
+          _showSnackBar(
+            'Por favor, verifica tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.',
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 6),
+          );
+          await _auth.signOut(); // Cierra la sesión si no está verificado
+          return; // Detiene el proceso de login
+        }
+        // --- FIN VERIFICACIÓN DE CORREO ---
+
         print('Inicio de sesión exitoso: ${userCredential.user!.email}');
         
-        // LLAMADA CLAVE: Crear/actualizar colecciones después del login exitoso
         if (userCredential.user != null) {
           await _createOrUpdateUserCollections(userCredential.user!);
         }
@@ -134,10 +157,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           message = 'Contraseña incorrecta para ese correo electrónico.';
         } else if (e.code == 'invalid-email') {
           message = 'El formato del correo electrónico es inválido.';
-        } else {
+        } else if (e.code == 'user-disabled') {
+          message = 'Este usuario ha sido deshabilitado.';
+        }
+        else {
           message = 'Error de inicio de sesión: ${e.message}';
         }
-        _showErrorSnackBar(message);
+        _showSnackBar(message, backgroundColor: Colors.red);
       } finally {
         setState(() {
           _isLoading = false;
@@ -160,12 +186,20 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         );
         print('Registro exitoso: ${userCredential.user!.email}');
         
-        // LLAMADA CLAVE: Crear colecciones después del registro exitoso
+        // --- ENVÍO DE VERIFICACIÓN DE CORREO ---
         if (userCredential.user != null) {
-          await _createOrUpdateUserCollections(userCredential.user!);
+          await userCredential.user!.sendEmailVerification();
+          _showSnackBar(
+            '¡Registro exitoso! Se ha enviado un correo de verificación a tu email. Por favor, verifica tu cuenta antes de iniciar sesión.',
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 8),
+          );
         }
+        // --- FIN ENVÍO DE VERIFICACIÓN DE CORREO ---
 
-        _showSuccessSnackBar('Usuario registrado exitosamente. Ahora puedes iniciar sesión.');
+        // No creamos colecciones aquí, ya que el usuario debe verificar primero.
+        // La creación de colecciones se hará en _login o _signInWithGoogle después de la verificación.
+        
         setState(() {
           _isLogin = true; // Vuelve a la pantalla de login después del registro
         });
@@ -178,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         } else {
           message = 'Error de registro: ${e.message}';
         }
-        _showErrorSnackBar(message);
+        _showSnackBar(message, backgroundColor: Colors.red);
       } finally {
         setState(() {
           _isLoading = false;
@@ -187,26 +221,61 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red[600],
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
+  // NUEVA FUNCIÓN: Inicio de sesión con Google
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      // 1. Iniciar el flujo de Google Sign-In
+      final GoogleSignInAccount? googleUser = await GoogleSignIn.instance.authenticate();
+      if (googleUser == null) {
+        // El usuario canceló el inicio de sesión con Google
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
 
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green[600],
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+      // 2. Obtener los detalles de autenticación de Google
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      // 3. Crear una credencial de Firebase con el token de Google
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.idToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // 4. Iniciar sesión en Firebase con la credencial de Google
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      print('Inicio de sesión con Google exitoso: ${userCredential.user!.email}');
+
+      // 5. Crear/Actualizar colecciones de usuario en Firestore
+      if (userCredential.user != null) {
+        await _createOrUpdateUserCollections(userCredential.user!);
+      }
+
+      Navigator.pushReplacementNamed(context, '/dashboard'); // Navega al dashboard
+
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'account-exists-with-different-credential') {
+        message = 'Ya existe una cuenta con el mismo correo electrónico pero con diferentes credenciales de inicio de sesión.';
+      } else if (e.code == 'invalid-credential') {
+        message = 'La credencial de autenticación de Google es inválida.';
+      } else {
+        message = 'Error al iniciar sesión con Google: ${e.message}';
+      }
+      _showSnackBar(message, backgroundColor: Colors.red);
+      print('Google Sign-In Error (FirebaseAuthException): ${e.code} - ${e.message}');
+    } catch (e) {
+      _showSnackBar('Error al iniciar sesión con Google. Inténtalo de nuevo.', backgroundColor: Colors.red);
+      print('Google Sign-In Error (General): $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -343,6 +412,38 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                             style: TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(height: 16),
+                                      // Botón de Google Sign-In
+                                      Container(
+                                        width: double.infinity,
+                                        height: 56,
+                                        child: OutlinedButton.icon(
+                                          onPressed: _signInWithGoogle,
+                                          style: OutlinedButton.styleFrom(
+                                            side: BorderSide(color: Colors.grey[300]!, width: 1),
+                                            backgroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(16),
+                                            ),
+                                            elevation: 4,
+                                            shadowColor: Colors.black12,
+                                          ),
+                                          icon: Image.network(
+                                            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/2048px-Google_%22G%22_logo.svg.png',
+                                            height: 24,
+                                            width: 24,
+                                            errorBuilder: (context, error, stackTrace) => Icon(Icons.g_mobiledata, size: 24), // Fallback icon
+                                          ),
+                                          label: Text(
+                                            'Continuar con Google',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey[700],
                                             ),
                                           ),
                                         ),

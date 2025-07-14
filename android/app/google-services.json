@@ -12,7 +12,12 @@
           "package_name": "com.example.interest_compound_game"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "389793525566-kb4b6usj6mdg61btq1kl9iaimpa4i1et.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBls1eU5bSIjC0S1UpfLNOXDp9_ZeneP6A"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "389793525566-kb4b6usj6mdg61btq1kl9iaimpa4i1et.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "389793525566-mg2qeiba0ifat2spafpu1q237ae1q9l7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.interestCompoundGame"
+              }
+            }
+          ]
         }
       }
     }

@@ -3,10 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Cloud Firestor
 import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth (si lo necesitas para filtrar)
 import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
 
-// La clase RankEntry ya no es estrictamente necesaria si usamos directamente RankingModel
-// Pero la mantendremos si quieres una capa de abstracción o datos específicos para el UI.
-// Sin embargo, para simplificar, usaremos RankingModel directamente en la lista.
-
 class RankingScreen extends StatefulWidget {
   @override
   _RankingScreenState createState() => _RankingScreenState();
@@ -21,10 +17,12 @@ class _RankingScreenState extends State<RankingScreen> {
   List<RankingModel> _rankingData = [];
   bool _isLoading = true; // Para mostrar un indicador de carga
   String? _errorMessage; // Para mostrar mensajes de error
+  String? _currentUserId; // Para almacenar el UID del usuario actual
 
   @override
   void initState() {
     super.initState();
+    _currentUserId = _auth.currentUser?.uid; // Obtener el UID del usuario actual
     _loadRankingData(); // Llama a la función para cargar los datos
   }
 
@@ -38,11 +36,12 @@ class _RankingScreenState extends State<RankingScreen> {
 
     try {
       // Consulta la colección 'rankings'
-      // Ordena por 'bestScore' de forma descendente (puntuación más alta primero)
-      // Limita a, por ejemplo, los top 20 para no cargar demasiados datos
+      // Ordena por 'currentStreak' de forma descendente (racha más alta primero)
+      // También puedes añadir un segundo criterio de ordenación si las rachas son iguales, por ejemplo, por bestScore
       final QuerySnapshot snapshot = await _firestore.collection('rankings')
-          .orderBy('bestScore', descending: true)
-          .limit(20) // Puedes ajustar este límite
+          .orderBy('currentStreak', descending: true) // Ordena por racha
+          .orderBy('bestScore', descending: true) // Segundo criterio: por puntuación si las rachas son iguales
+          .limit(50) // Aumenta el límite para obtener más datos y luego deduplicar
           .get();
 
       // Convierte los documentos de Firestore a objetos RankingModel
@@ -50,8 +49,22 @@ class _RankingScreenState extends State<RankingScreen> {
         return RankingModel.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
       }).toList();
 
+      // Deduplicar la lista de rankings por userId
+      // Usamos un mapa para almacenar una única entrada por userId.
+      // Si hay duplicados en Firestore, esta lógica conservará la primera que encuentre
+      // (que debido a la ordenación, debería ser la más relevante si las rachas son iguales).
+      final Map<String, RankingModel> uniqueRankingsMap = {};
+      for (var entry in fetchedRankings) {
+        if (!uniqueRankingsMap.containsKey(entry.userId)) {
+          uniqueRankingsMap[entry.userId] = entry;
+        }
+      }
+
+      // Convierte el mapa de vuelta a una lista
+      final List<RankingModel> deduplicatedRankings = uniqueRankingsMap.values.toList();
+
       setState(() {
-        _rankingData = fetchedRankings;
+        _rankingData = deduplicatedRankings;
       });
 
     } on FirebaseException catch (e) {
@@ -73,13 +86,21 @@ class _RankingScreenState extends State<RankingScreen> {
     }
   }
 
+  // Función auxiliar para limpiar el nombre de usuario
+  String _cleanUserName(String userName) {
+    if (userName.contains('@')) {
+      return userName.substring(0, userName.indexOf('@'));
+    }
+    return userName;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50], // Fondo consistente
       appBar: AppBar(
         title: const Text(
-          'Ranking de Puntuaciones',
+          'Ranking de Rachas', // Título actualizado
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: Color(0xFF1E3A8A), // Color consistente
@@ -141,13 +162,13 @@ class _RankingScreenState extends State<RankingScreen> {
                           Icon(Icons.leaderboard_outlined, size: 80, color: Colors.grey[400]),
                           const SizedBox(height: 20),
                           const Text(
-                            '¡Aún no hay puntuaciones en el ranking!',
+                            '¡Aún no hay rachas en el ranking!', // Mensaje actualizado
                             style: TextStyle(fontSize: 18, color: Colors.grey),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 10),
                           const Text(
-                            'Realiza algunos cálculos para aparecer aquí.',
+                            'Juega y mantén tu racha para aparecer aquí.', // Mensaje actualizado
                             style: TextStyle(fontSize: 14, color: Colors.grey),
                             textAlign: TextAlign.center,
                           ),
@@ -159,7 +180,7 @@ class _RankingScreenState extends State<RankingScreen> {
                             },
                             icon: Icon(Icons.calculate, color: Colors.white),
                             label: Text(
-                              'Ir a Calcular',
+                              'Ir a Jugar', // Texto actualizado
                               style: TextStyle(color: Colors.white),
                             ),
                             style: ElevatedButton.styleFrom(
@@ -178,36 +199,51 @@ class _RankingScreenState extends State<RankingScreen> {
                       itemCount: _rankingData.length,
                       itemBuilder: (context, index) {
                         final entry = _rankingData[index];
+                        // Determina si esta entrada es del usuario actual
+                        final isCurrentUser = entry.userId == _currentUserId;
+
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                           elevation: 4,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          // Aplica un color de fondo diferente si es el usuario actual
+                          color: isCurrentUser ? Colors.blue.shade50 : Colors.white, // Color de resaltado
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: Color(0xFF1E3A8A), // Color consistente
+                              backgroundColor: isCurrentUser ? Color(0xFF3B82F6) : Color(0xFF1E3A8A), // Color consistente, resaltado para el usuario actual
                               child: Text(
                                 '${index + 1}', // Posición en el ranking
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                               ),
                             ),
-                            title: Text(
-                              entry.userName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            title: Row( // Usamos un Row para el nombre y la racha
+                              mainAxisSize: MainAxisSize.min, // Ajusta el tamaño del Row a su contenido
+                              children: [
+                                Flexible( // Permite que el nombre se ajuste si es largo
+                                  child: Text(
+                                    _cleanUserName(entry.userName),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: isCurrentUser ? Color(0xFF1E3A8A) : Colors.black87, // Color de texto para el nombre
+                                    ),
+                                    overflow: TextOverflow.ellipsis, // Recorta el texto si es demasiado largo
+                                  ),
+                                ),
+                                const SizedBox(width: 8), // Espacio entre el nombre y el icono
+                                Icon(Icons.local_fire_department, color: Colors.orange, size: 18), // Icono de fuego
+                                const SizedBox(width: 4), // Espacio entre el icono y la racha
+                                Text(
+                                  '${entry.currentStreak} días', // Muestra la racha
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.orange[700]),
+                                ),
+                              ],
                             ),
                             subtitle: Text(
-                              'Puntuación: ${entry.bestScore.toStringAsFixed(2)}', // Usa bestScore
-                              style: TextStyle(color: Colors.grey[600]),
-                            ),
-                            trailing: Text(
-                              // Formato de fecha completo (día/mes/año)
-                              '${entry.lastUpdated.day}/${entry.lastUpdated.month}/${entry.lastUpdated.year}',
+                              'Última act.: ${entry.lastUpdated.day}/${entry.lastUpdated.month}/${entry.lastUpdated.year}', // Muestra la fecha de última actualización
                               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                             ),
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Detalles de ${entry.userName} (ID: ${entry.userId})')),
-                              );
-                            },
+                            // Se eliminó el trailing IconButton
                           ),
                         );
                       },

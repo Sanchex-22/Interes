@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -17,24 +18,40 @@ void main() async {
   await MobileAds.instance.initialize();
   runApp(MyApp());
 }
-
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Interés Compuesto Game',
-      debugShowCheckedModeBanner: false,
+      title: 'Tu App de Interés Compuesto',
       theme: ThemeData(
-        primarySwatch: Colors.indigo,
+        primarySwatch: Colors.blue,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      initialRoute: '/',
+      // Aquí es donde verificas el estado de autenticación
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            // Muestra un indicador de carga mientras se verifica la autenticación
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasData) {
+            // Si hay un usuario logueado, ve al Dashboard
+            return Dashboard();
+          } else {
+            // Si no hay usuario logueado, ve a la pantalla de Login
+            return LoginScreen();
+          }
+        },
+      ),
       routes: {
-        '/': (context) => LoginScreen(),
-        '/dashboard': (context) => Dashboard(),
-        '/calculator': (context) => CalculatorScreen(),
+        '/calculator': (context) => CalculatorScreen(), // Asegúrate de definir tus rutas
         '/chat': (context) => ChatScreen(),
-        '/ranking': (context) => RankingScreen(), 
-        '/progress': (context) => ProgressScreen(), 
+        '/ranking': (context) => RankingScreen(),
+        '/progress': (context) => ProgressScreen(),
+        // ... otras rutas
       },
     );
   }

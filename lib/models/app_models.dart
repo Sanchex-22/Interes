@@ -61,14 +61,43 @@ class UserModel {
   // Método para actualizar campos específicos (útil para `update` en Firestore)
   Map<String, dynamic> toUpdateMap() {
     final Map<String, dynamic> map = {};
+    // No incluir uid o email aquí, ya que no suelen actualizarse
     if (displayName != null) map['displayName'] = displayName;
     map['totalCalculations'] = totalCalculations;
     map['totalScore'] = totalScore;
     map['currentStreak'] = currentStreak;
     if (lastActivityDate != null) map['lastActivityDate'] = Timestamp.fromDate(lastActivityDate!);
+    // registrationDate no se actualiza
     if (lastLoginDate != null) map['lastLoginDate'] = Timestamp.fromDate(lastLoginDate!);
     if (role != 'user') map['role'] = role; // Solo actualiza si no es el rol por defecto
     return map;
+  }
+
+  // NUEVO: Método copyWith para actualizar propiedades inmutablemente
+  UserModel copyWith({
+    String? uid,
+    String? email,
+    String? displayName,
+    int? totalCalculations,
+    double? totalScore,
+    int? currentStreak,
+    DateTime? lastActivityDate,
+    DateTime? registrationDate,
+    DateTime? lastLoginDate,
+    String? role,
+  }) {
+    return UserModel(
+      uid: uid ?? this.uid,
+      email: email ?? this.email,
+      displayName: displayName ?? this.displayName,
+      totalCalculations: totalCalculations ?? this.totalCalculations,
+      totalScore: totalScore ?? this.totalScore,
+      currentStreak: currentStreak ?? this.currentStreak,
+      lastActivityDate: lastActivityDate ?? this.lastActivityDate,
+      registrationDate: registrationDate ?? this.registrationDate,
+      lastLoginDate: lastLoginDate ?? this.lastLoginDate,
+      role: role ?? this.role,
+    );
   }
 }
 
@@ -135,6 +164,7 @@ class RankingModel {
   final DateTime lastUpdated;
   final double averageScore; // Puede ser nulo o no usado si no es relevante
   final int totalCalculations;
+  final int currentStreak; // Campo para la racha actual
 
   RankingModel({
     required this.userId,
@@ -143,6 +173,7 @@ class RankingModel {
     required this.lastUpdated,
     this.averageScore = 0.0,
     this.totalCalculations = 0,
+    this.currentStreak = 0, // Inicializa con 0 por defecto
   });
 
   // Constructor para crear un RankingModel desde un documento de Firestore
@@ -155,6 +186,7 @@ class RankingModel {
       lastUpdated: (data?['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
       averageScore: (data?['averageScore'] as num?)?.toDouble() ?? 0.0,
       totalCalculations: (data?['totalCalculations'] as num?)?.toInt() ?? 0,
+      currentStreak: (data?['currentStreak'] as num?)?.toInt() ?? 0, // Mapea el nuevo campo
     );
   }
 
@@ -166,6 +198,46 @@ class RankingModel {
       "lastUpdated": Timestamp.fromDate(lastUpdated),
       "averageScore": averageScore,
       "totalCalculations": totalCalculations,
+      "currentStreak": currentStreak, // Incluye el nuevo campo
+    };
+  }
+}
+
+// NUEVO MODELO: Para una entrada de meta diaria (usado en la subcolección dailyGoals)
+class DailyGoalEntry {
+  final int round;
+  final double goalAmount;
+  double currentAmount; // Puede ser modificado por el usuario
+  final String suggestion;
+  bool completed; // Puede ser modificado por el usuario
+
+  DailyGoalEntry({
+    required this.round,
+    required this.goalAmount,
+    required this.currentAmount,
+    required this.suggestion,
+    required this.completed,
+  });
+
+  // Constructor para crear una DailyGoalEntry desde un mapa de Firestore
+  factory DailyGoalEntry.fromFirestore(Map<String, dynamic> data) {
+    return DailyGoalEntry(
+      round: data['round'] as int,
+      goalAmount: (data['goalAmount'] as num).toDouble(),
+      currentAmount: (data['currentAmount'] as num).toDouble(),
+      suggestion: data['suggestion'] as String,
+      completed: data['completed'] as bool,
+    );
+  }
+
+  // Método para convertir la DailyGoalEntry a un mapa para Firestore
+  Map<String, dynamic> toFirestore() {
+    return {
+      'round': round,
+      'goalAmount': goalAmount,
+      'currentAmount': currentAmount,
+      'suggestion': suggestion,
+      'completed': completed,
     };
   }
 }

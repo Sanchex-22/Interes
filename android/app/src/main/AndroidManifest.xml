@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="interest_compound_game"
+        android:label="Interes Compuesto"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- Sample AdMob app ID: ca-app-pub-3940256099942544~3347511713 -->

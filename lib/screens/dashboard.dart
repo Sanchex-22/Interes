@@ -195,54 +195,6 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     }
   }
 
-  // Nuevo widget para mostrar las tarjetas de progreso y racha
-  Widget _buildProgressCard({
-    required IconData icon,
-    required String title,
-    required String value,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 36, color: color),
-            SizedBox(height: 10),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[700],
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildFeatureCard({
     required IconData icon,
     required String title,
@@ -251,16 +203,16 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     required VoidCallback onTap,
   }) {
     return Card(
-      elevation: 8,
-      shadowColor: color.withOpacity(0.3),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 4, // Reducido de 8 a 4
+      shadowColor: color.withOpacity(0.2), // Sombra más sutil
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // Reducido de 15 a 12
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12), // Reducido de 15 a 12
         child: Container(
-          padding: EdgeInsets.all(20),
+          padding: EdgeInsets.all(10), // Reducido de 12 a 10
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(12), // Reducido de 15 a 12
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -274,36 +226,36 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 60,
-                height: 60,
+                width: 45, // Reducido de 50 a 45
+                height: 45, // Reducido de 50 a 45
                 decoration: BoxDecoration(
                   color: color,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: color.withOpacity(0.3),
-                      blurRadius: 15,
-                      offset: Offset(0, 8),
+                      color: color.withOpacity(0.2), // Sombra más sutil
+                      blurRadius: 8, // Reducido de 10 a 8
+                      offset: Offset(0, 4), // Ajustado el offset de la sombra
                     ),
                   ],
                 ),
-                child: Icon(icon, color: Colors.white, size: 30),
+                child: Icon(icon, color: Colors.white, size: 24), // Reducido de 28 a 24
               ),
-              SizedBox(height: 16),
+              SizedBox(height: 8), // Reducido de 10 a 8
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 14, // Reducido de 16 a 14
                   fontWeight: FontWeight.bold,
                   color: Colors.grey[800],
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 4), // Reducido de 6 a 4
               Text(
                 subtitle,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 10, // Reducido de 12 a 10
                   color: Colors.grey[600],
                 ),
                 textAlign: TextAlign.center,
@@ -311,6 +263,37 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // Widget para mostrar estadísticas compactas estilo juego
+  Widget _buildCompactStatDisplay({
+    required IconData icon,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6), // Padding más compacto
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15), // Fondo sutil
+        borderRadius: BorderRadius.circular(20), // Bordes redondeados
+        border: Border.all(color: color.withOpacity(0.3), width: 1), // Borde ligero
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min, // Ajusta al contenido
+        children: [
+          Icon(icon, color: color, size: 18), // Icono más pequeño
+          SizedBox(width: 6), // Espacio entre icono y texto
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16, // Tamaño de fuente para el valor
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -402,6 +385,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
               _buildDrawerItem(Icons.calculate, 'Calculadora', '/calculator'),
               _buildDrawerItem(Icons.chat, 'Chat', '/chat'),
               _buildDrawerItem(Icons.leaderboard, 'Ranking', '/ranking'),
+              _buildDrawerItem(Icons.trending_up, 'Progreso', '/progress'), // Añadido el item de progreso al drawer
               Divider(color: Colors.white30, thickness: 1),
               ListTile(
                 leading: Icon(Icons.exit_to_app, color: Colors.white),
@@ -422,7 +406,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
             // Header con gradiente
             Container(
               width: double.infinity,
-              padding: EdgeInsets.fromLTRB(24, 0, 24, 32),
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 20), // Padding inferior reducido
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -440,42 +424,27 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                   Text(
                     '¡Hola, ${_currentUser?.email?.split('@')[0] ?? 'Usuario'}!',
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: 20, // Reducido de 24 a 20
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Bienvenido al sistema de interés compuesto',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white70,
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  // Nuevo: Tarjetas de progreso y racha
+                  SizedBox(height: 16), // Espacio reducido
+                  // NUEVO: Estadísticas compactas estilo juego
                   _isProfileLoading
                       ? Center(child: CircularProgressIndicator(color: Colors.white))
                       : Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly, // Distribuye el espacio uniformemente
                           children: [
-                            Expanded(
-                              child: _buildProgressCard(
-                                icon: Icons.calculate,
-                                title: 'Cálculos',
-                                value: _userProfile?.totalCalculations.toString() ?? '0',
-                                color: Colors.amber,
-                              ),
+                            _buildCompactStatDisplay(
+                              icon: Icons.calculate,
+                              value: '${_userProfile?.totalCalculations ?? 0} Cálculos',
+                              color: Colors.amber.shade300, // Color ajustado
                             ),
-                            SizedBox(width: 16),
-                            Expanded(
-                              child: _buildProgressCard(
-                                icon: Icons.local_fire_department,
-                                title: 'Racha',
-                                value: _userProfile?.currentStreak.toString() ?? '0',
-                                color: Colors.redAccent,
-                              ),
+                            _buildCompactStatDisplay(
+                              icon: Icons.local_fire_department,
+                              value: '${_userProfile?.currentStreak ?? 0} Días de Racha',
+                              color: Colors.redAccent.shade200, // Color ajustado
                             ),
                           ],
                         ),
@@ -486,11 +455,11 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
             // Grid de características
             Expanded(
               child: Padding(
-                padding: EdgeInsets.all(24),
+                padding: EdgeInsets.all(16), // Mantenido en 16
                 child: GridView.count(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 12, // Mantenido en 12
+                  mainAxisSpacing: 12, // Mantenido en 12
                   children: [
                     _buildFeatureCard(
                       icon: Icons.calculate,
