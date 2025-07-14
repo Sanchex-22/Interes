@@ -1,47 +1,11 @@
 import 'package:flutter/material.dart';
-// Puedes añadir importaciones de Firebase si el ranking se carga de Firestore
-// import 'package:cloud_firestore/cloud_firestore.dart';
-// import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Cloud Firestore
+import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth (si lo necesitas para filtrar)
+import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
 
-// Clase de ejemplo para un elemento del ranking.
-// Adapta esto a la estructura real de tus datos de ranking.
-class RankEntry {
-  final String userName;
-  final double score;
-  final DateTime date;
-
-  RankEntry({required this.userName, required this.score, required this.date});
-
-  // Método para crear una entrada desde un mapa (útil para Firestore)
-  factory RankEntry.fromMap(Map<String, dynamic> data) {
-    return RankEntry(
-      userName: data['userName'] ?? 'Desconocido',
-      score: (data['score'] as num?)?.toDouble() ?? 0.0,
-      date: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-    );
-  }
-}
-
-class Timestamp extends Object {
-  final int seconds;
-  final int nanoseconds;
-
-  Timestamp({required this.seconds, required this.nanoseconds});
-
-  factory Timestamp.fromDate(DateTime date) {
-    final int milliseconds = date.millisecondsSinceEpoch;
-    return Timestamp(
-      seconds: milliseconds ~/ 1000,
-      nanoseconds: (milliseconds % 1000) * 1000000,
-    );
-  }
-
-  DateTime toDate() {
-    return DateTime.fromMillisecondsSinceEpoch(
-      seconds * 1000 + nanoseconds ~/ 1000000,
-    );
-  }
-}
+// La clase RankEntry ya no es estrictamente necesaria si usamos directamente RankingModel
+// Pero la mantendremos si quieres una capa de abstracción o datos específicos para el UI.
+// Sin embargo, para simplificar, usaremos RankingModel directamente en la lista.
 
 class RankingScreen extends StatefulWidget {
   @override
@@ -49,9 +13,12 @@ class RankingScreen extends StatefulWidget {
 }
 
 class _RankingScreenState extends State<RankingScreen> {
-  // Aquí almacenarías tus datos de ranking.
-  // Por ahora, es una lista vacía que simula "no hay cálculos".
-  List<RankEntry> _rankingData = [];
+  // Instancias de Firebase
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Se mantiene por si se necesita el UID del usuario actual
+
+  // Datos del ranking (ahora de tipo RankingModel)
+  List<RankingModel> _rankingData = [];
   bool _isLoading = true; // Para mostrar un indicador de carga
   String? _errorMessage; // Para mostrar mensajes de error
 
@@ -61,44 +28,42 @@ class _RankingScreenState extends State<RankingScreen> {
     _loadRankingData(); // Llama a la función para cargar los datos
   }
 
-  // Función para cargar los datos del ranking.
-  // Aquí es donde integrarías la lógica para obtener los datos.
+  // Función para cargar los datos del ranking desde Firestore
   Future<void> _loadRankingData() async {
     setState(() {
       _isLoading = true;
       _errorMessage = null; // Limpia cualquier error anterior
+      _rankingData = []; // Limpia los datos anteriores
     });
 
     try {
-      // Simulación de una carga de datos asíncrona
-      await Future.delayed(const Duration(seconds: 1)); // Simula un retraso de red
+      // Consulta la colección 'rankings'
+      // Ordena por 'bestScore' de forma descendente (puntuación más alta primero)
+      // Limita a, por ejemplo, los top 20 para no cargar demasiados datos
+      final QuerySnapshot snapshot = await _firestore.collection('rankings')
+          .orderBy('bestScore', descending: true)
+          .limit(20) // Puedes ajustar este límite
+          .get();
 
-      // --- Lógica para cargar datos reales ---
-      // Si usas Firestore, sería algo como esto:
-      // final FirebaseFirestore firestore = FirebaseFirestore.instance;
-      // final QuerySnapshot snapshot = await firestore.collection('rankings')
-      //     .orderBy('score', descending: true) // Ordena por puntuación
-      //     .limit(10) // Limita a los top 10
-      //     .get();
-      //
-      // setState(() {
-      //   _rankingData = snapshot.docs.map((doc) => RankEntry.fromMap(doc.data() as Map<String, dynamic>)).toList();
-      // });
+      // Convierte los documentos de Firestore a objetos RankingModel
+      final List<RankingModel> fetchedRankings = snapshot.docs.map((doc) {
+        return RankingModel.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
+      }).toList();
 
-      // *** SIMULACIÓN DE DATOS ***
-      // Para probar el caso de "no hay datos", manten _rankingData como una lista vacía.
-      // Para probar con datos, descomenta la siguiente línea:
-      // _rankingData = [
-      //   RankEntry(userName: 'JugadorA', score: 1250.0, date: DateTime.now().subtract(Duration(days: 1))),
-      //   RankEntry(userName: 'JugadorB', score: 1100.0, date: DateTime.now().subtract(Duration(hours: 5))),
-      //   RankEntry(userName: 'JugadorC', score: 980.0, date: DateTime.now()),
-      // ];
-      // *** FIN SIMULACIÓN ***
-
-    } catch (e) {
-      // Captura cualquier error durante la carga de datos
       setState(() {
-        _errorMessage = 'Error al cargar el ranking: ${e.toString()}';
+        _rankingData = fetchedRankings;
+      });
+
+    } on FirebaseException catch (e) {
+      // Captura errores específicos de Firebase
+      setState(() {
+        _errorMessage = 'Error de Firestore al cargar el ranking: ${e.code} - ${e.message}';
+      });
+      print('Firestore Error (RankingScreen): ${e.code} - ${e.message}');
+    } catch (e) {
+      // Captura cualquier otro tipo de error
+      setState(() {
+        _errorMessage = 'Error desconocido al cargar el ranking: ${e.toString()}';
       });
       print('Error loading ranking: $e');
     } finally {
@@ -111,11 +76,34 @@ class _RankingScreenState extends State<RankingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50], // Fondo consistente
       appBar: AppBar(
-        title: const Text('Ranking de Puntuaciones'),
+        title: const Text(
+          'Ranking de Puntuaciones',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        backgroundColor: Color(0xFF1E3A8A), // Color consistente
+        elevation: 0,
+        iconTheme: IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+            ),
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh, color: Colors.white),
+            onPressed: _loadRankingData, // Botón para recargar el ranking
+            tooltip: 'Recargar Ranking',
+          ),
+        ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator()) // Muestra un spinner mientras carga
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A))) // Muestra un spinner mientras carga
           : _errorMessage != null
               ? Center(
                   // Muestra un mensaje de error si algo salió mal
@@ -135,6 +123,10 @@ class _RankingScreenState extends State<RankingScreen> {
                         ElevatedButton(
                           onPressed: _loadRankingData, // Botón para reintentar
                           child: Text('Reintentar'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xFF1E3A8A),
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ],
                     ),
@@ -162,12 +154,21 @@ class _RankingScreenState extends State<RankingScreen> {
                           const SizedBox(height: 30),
                           ElevatedButton.icon(
                             onPressed: () {
-                              // Esto asume que tienes una ruta para la calculadora o la pantalla principal
                               Navigator.pop(context); // Cierra la pantalla de ranking
                               // Opcional: Navigator.pushReplacementNamed(context, '/calculator');
                             },
-                            icon: Icon(Icons.calculate),
-                            label: Text('Ir a Calcular'),
+                            icon: Icon(Icons.calculate, color: Colors.white),
+                            label: Text(
+                              'Ir a Calcular',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFF1E3A8A),
+                              elevation: 5,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -183,7 +184,7 @@ class _RankingScreenState extends State<RankingScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: Colors.indigoAccent,
+                              backgroundColor: Color(0xFF1E3A8A), // Color consistente
                               child: Text(
                                 '${index + 1}', // Posición en el ranking
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -194,17 +195,17 @@ class _RankingScreenState extends State<RankingScreen> {
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                             ),
                             subtitle: Text(
-                              'Puntuación: ${entry.score.toStringAsFixed(2)}', // Formatea la puntuación
+                              'Puntuación: ${entry.bestScore.toStringAsFixed(2)}', // Usa bestScore
                               style: TextStyle(color: Colors.grey[600]),
                             ),
                             trailing: Text(
-                              '${entry.date.day}/${entry.date.month}', // Muestra solo día/mes
+                              // Formato de fecha completo (día/mes/año)
+                              '${entry.lastUpdated.day}/${entry.lastUpdated.month}/${entry.lastUpdated.year}',
                               style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                             ),
-                            // Puedes añadir un onTap para ver detalles de la entrada
                             onTap: () {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Detalles de ${entry.userName}')),
+                                SnackBar(content: Text('Detalles de ${entry.userName} (ID: ${entry.userId})')),
                               );
                             },
                           ),

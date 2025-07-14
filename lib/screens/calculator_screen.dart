@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
+import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
 
 class CalculatorScreen extends StatefulWidget {
   @override
@@ -20,6 +23,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> with TickerProvider
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
   late Animation<Offset> _slideAnimation;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Instancia de Auth
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Instancia de Firestore
 
   @override
   void initState() {
@@ -51,18 +57,123 @@ class _CalculatorScreenState extends State<CalculatorScreen> with TickerProvider
     super.dispose();
   }
 
-  void _calculate() {
+  // Función para mostrar mensajes de SnackBar
+  void _showSnackBar(String message, {Color? backgroundColor}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  // Lógica para calcular y guardar
+  void _calculate() async { // Convertido a async
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       double total = _capital;
       for (int i = 0; i < _rounds; i++) {
         total *= (1 + (_rate / 100));
       }
+      
+      // Calcular la ganancia para la puntuación
+      double gain = total - _capital;
+      // Puedes definir una lógica de puntuación más compleja aquí
+      // Por ejemplo, la puntuación podría ser la ganancia / 100 o un valor fijo por cálculo
+      double scoreAchieved = gain / 10; // Ejemplo: 10% de la ganancia como puntuación
+
       setState(() {
         _result = total;
         _showResult = true;
       });
       _resultAnimationController.forward();
+
+      // --- Lógica de guardado en Firestore ---
+      final user = _auth.currentUser;
+      if (user == null) {
+        _showSnackBar('Debes iniciar sesión para guardar tu progreso.', backgroundColor: Colors.red);
+        return;
+      }
+
+      try {
+        // 1. Guardar el cálculo individual
+        final newCalculation = CalculationModel(
+          id: _firestore.collection('calculations').doc().id, // Genera un nuevo ID
+          userId: user.uid,
+          calculationType: 'interes_compuesto', // O podrías tener un campo para esto
+          initialAmount: _capital,
+          interestRate: _rate,
+          timePeriod: _rounds.toDouble(),
+          finalResult: _result,
+          scoreAchieved: scoreAchieved,
+          timestamp: DateTime.now(),
+        );
+        await _firestore.collection('calculations').add(newCalculation.toFirestore());
+        print('Cálculo guardado en Firestore.');
+
+        // 2. Actualizar el progreso del usuario (users collection)
+        final userDocRef = _firestore.collection('users').doc(user.uid);
+        final userSnapshot = await userDocRef.get();
+        UserModel currentUserModel = UserModel.fromFirestore(userSnapshot); // Obtiene el modelo actual
+
+        // Lógica de racha
+        int updatedStreak = currentUserModel.currentStreak;
+        DateTime? lastActivity = currentUserModel.lastActivityDate;
+        DateTime today = DateTime.now();
+        DateTime yesterday = today.subtract(const Duration(days: 1));
+
+        if (lastActivity == null || lastActivity.isBefore(yesterday.copyWith(hour: 0, minute: 0, second: 0))) {
+          // Si no hay actividad previa o la última actividad fue antes de ayer, reinicia la racha
+          updatedStreak = 1;
+        } else if (lastActivity.isBefore(today.copyWith(hour: 0, minute: 0, second: 0))) {
+          // Si la última actividad fue ayer, incrementa la racha
+          updatedStreak++;
+        }
+        // Si la última actividad fue hoy, la racha no cambia (ya se contó)
+
+        final Map<String, dynamic> userUpdates = {
+          "totalCalculations": FieldValue.increment(1), // Incrementa en 1
+          "totalScore": FieldValue.increment(scoreAchieved), // Suma la puntuación
+          "currentStreak": updatedStreak,
+          "lastActivityDate": Timestamp.fromDate(today), // Actualiza la fecha de última actividad
+          "lastLoginDate": Timestamp.fromDate(today), // También actualiza el último login
+        };
+        await userDocRef.update(userUpdates);
+        print('Progreso del usuario actualizado en Firestore.');
+
+        // 3. Actualizar el ranking (rankings collection)
+        final rankingDocRef = _firestore.collection('rankings').doc(user.uid);
+        final rankingSnapshot = await rankingDocRef.get();
+        
+        double currentBestScore = (rankingSnapshot.data()?['bestScore'] as num?)?.toDouble() ?? 0.0;
+        double updatedAverageScore = (currentUserModel.totalScore + scoreAchieved) / (currentUserModel.totalCalculations + 1);
+
+        // Solo actualiza bestScore si la nueva puntuación es mayor
+        if (scoreAchieved > currentBestScore) {
+          currentBestScore = scoreAchieved;
+        }
+
+        final Map<String, dynamic> rankingUpdates = {
+          "userName": currentUserModel.displayName ?? user.email!, // Nombre para mostrar en el ranking
+          "bestScore": currentBestScore,
+          "lastUpdated": Timestamp.fromDate(DateTime.now()),
+          "averageScore": updatedAverageScore,
+          "totalCalculations": FieldValue.increment(1), // Incrementa en 1
+        };
+        await rankingDocRef.set(rankingUpdates, SetOptions(merge: true)); // Usa set con merge para crear o actualizar
+        print('Ranking del usuario actualizado en Firestore.');
+
+        _showSnackBar('Cálculo y progreso guardados exitosamente!', backgroundColor: Colors.green);
+
+      } on FirebaseException catch (e) {
+        print('Firestore Error (CalculatorScreen): Código: ${e.code}, Mensaje: ${e.message}');
+        _showSnackBar('Error al guardar el cálculo: ${e.message}', backgroundColor: Colors.red);
+      } catch (e) {
+        print('Error desconocido al guardar el cálculo: $e');
+        _showSnackBar('Error desconocido al guardar el cálculo.', backgroundColor: Colors.red);
+      }
     }
   }
 

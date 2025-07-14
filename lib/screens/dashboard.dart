@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:interest_compound_game/screens/login_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
+import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
+import 'dart:async'; // Import for StreamSubscription
 
 class Dashboard extends StatefulWidget {
   @override
@@ -11,9 +14,16 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Add Firestore instance
   User? _currentUser;
+  UserModel? _userProfile; // Nuevo: Para almacenar el perfil completo del usuario
+  bool _isProfileLoading = true; // Nuevo: Estado de carga del perfil
+  StreamSubscription? _userProfileSubscription; // Stream listener for user profile
+
   BannerAd? _bannerAd;
   bool _isBannerAdLoaded = false;
+  bool _bannerAdInitialized = false; // Bandera para asegurar que el anuncio se carga una sola vez
+
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -29,8 +39,6 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _loadCurrentUser();
-    _loadBannerAd();
     _animationController = AnimationController(
       duration: Duration(milliseconds: 1200),
       vsync: this,
@@ -39,22 +47,104 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+
+    _setupUserProfileListener(); // Setup the real-time listener
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_bannerAdInitialized) {
+      _loadBannerAd();
+      _bannerAdInitialized = true;
+    }
   }
 
   @override
   void dispose() {
     _bannerAd?.dispose();
     _animationController.dispose();
+    _userProfileSubscription?.cancel(); // Cancel the subscription to prevent memory leaks
     super.dispose();
   }
 
-  void _loadCurrentUser() {
-    setState(() {
-      _currentUser = _auth.currentUser;
-    });
+  // Setup real-time listener for user profile
+  void _setupUserProfileListener() {
+    _currentUser = _auth.currentUser;
+    if (_currentUser == null) {
+      setState(() {
+        _userProfile = null;
+        _isProfileLoading = false;
+      });
+      print('Dashboard: No hay usuario autenticado para escuchar el perfil.');
+      return;
+    }
+
+    // Cancel any existing subscription before setting up a new one
+    _userProfileSubscription?.cancel();
+
+    _userProfileSubscription = _firestore.collection('users').doc(_currentUser!.uid).snapshots().listen(
+      (DocumentSnapshot<Map<String, dynamic>> userDoc) {
+        if (userDoc.exists) {
+          setState(() {
+            _userProfile = UserModel.fromFirestore(userDoc);
+            _isProfileLoading = false; // Data has arrived
+          });
+          print('Dashboard: Perfil de usuario actualizado en tiempo real.');
+        } else {
+          // If the profile doesn't exist, create one with default data
+          // This logic is duplicated from LoginScreen, but acts as a fallback
+          print('Dashboard: Perfil de usuario no encontrado en Firestore para ${_currentUser!.uid}. Creando uno básico.');
+          final newUserModel = UserModel(
+            uid: _currentUser!.uid,
+            email: _currentUser!.email!,
+            displayName: _currentUser!.displayName,
+            registrationDate: DateTime.now(),
+            lastLoginDate: DateTime.now(),
+            role: 'user',
+            totalCalculations: 0,
+            totalScore: 0.0,
+            currentStreak: 0,
+            lastActivityDate: null,
+          );
+          _firestore.collection('users').doc(_currentUser!.uid).set(newUserModel.toFirestore()).then((_) {
+            setState(() {
+              _userProfile = newUserModel;
+              _isProfileLoading = false;
+            });
+            print('Dashboard: Perfil de usuario creado exitosamente como fallback.');
+          }).catchError((error) {
+            print('Dashboard: Error al crear perfil de usuario como fallback: $error');
+            setState(() {
+              _userProfile = null;
+              _isProfileLoading = false;
+            });
+          });
+        }
+      },
+      onError: (error) {
+        print('Dashboard: Error en el stream del perfil de usuario: $error');
+        if (error is FirebaseException) {
+          print('Código de error de Firebase: ${error.code}');
+          print('Mensaje de error de Firebase: ${error.message}');
+        }
+        setState(() {
+          _userProfile = null;
+          _isProfileLoading = false;
+        });
+      },
+      onDone: () {
+        print('Dashboard: Stream del perfil de usuario terminado.');
+      },
+    );
   }
 
   void _loadBannerAd() {
+    if (_adUnitId.isEmpty) {
+      print('No se pudo determinar el ID de la unidad de anuncios para la plataforma actual.');
+      return;
+    }
+
     _bannerAd = BannerAd(
       adUnitId: _adUnitId,
       request: const AdRequest(),
@@ -103,6 +193,54 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
         ),
       );
     }
+  }
+
+  // Nuevo widget para mostrar las tarjetas de progreso y racha
+  Widget _buildProgressCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(15),
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 36, color: color),
+            SizedBox(height: 10),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[700],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildFeatureCard({
@@ -315,10 +453,36 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                       color: Colors.white70,
                     ),
                   ),
+                  SizedBox(height: 20),
+                  // Nuevo: Tarjetas de progreso y racha
+                  _isProfileLoading
+                      ? Center(child: CircularProgressIndicator(color: Colors.white))
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            Expanded(
+                              child: _buildProgressCard(
+                                icon: Icons.calculate,
+                                title: 'Cálculos',
+                                value: _userProfile?.totalCalculations.toString() ?? '0',
+                                color: Colors.amber,
+                              ),
+                            ),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: _buildProgressCard(
+                                icon: Icons.local_fire_department,
+                                title: 'Racha',
+                                value: _userProfile?.currentStreak.toString() ?? '0',
+                                color: Colors.redAccent,
+                              ),
+                            ),
+                          ],
+                        ),
                 ],
               ),
             ),
-            
+
             // Grid de características
             Expanded(
               child: Padding(
@@ -360,7 +524,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                 ),
               ),
             ),
-            
+
             // Anuncio
             if (_bannerAd != null && _isBannerAdLoaded)
               Container(

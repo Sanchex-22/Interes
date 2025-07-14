@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Importa Firebase Auth
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
+import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
 import 'dart:math' as math;
 
 class ProgressScreen extends StatefulWidget {
@@ -7,16 +10,18 @@ class ProgressScreen extends StatefulWidget {
 }
 
 class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStateMixin {
-  // Datos del progreso del usuario
-  int _currentRounds = 12;
-  int _targetRounds = 25;
-  int _currentLevel = 3;
-  int _totalPoints = 1500;
-  int _dailyGoal = 2;
-  int _completedToday = 1;
-  int _streak = 7;
+  // Instancias de Firebase
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Datos del progreso del usuario (ahora cargados de Firestore)
+  UserModel? _userProfile;
+  bool _isLoading = true; // Para mostrar un indicador de carga
+
+  // Metas fijas para el progreso circular (pueden ser configurables en el futuro)
+  final int _targetRounds = 25; // Meta de cálculos para el progreso general
   
-  // Fechas y tiempo
+  // Fechas y tiempo (actualmente fijas, no de Firestore)
   DateTime _startDate = DateTime.now().subtract(Duration(days: 30));
   DateTime _targetDate = DateTime.now().add(Duration(days: 15));
   
@@ -29,6 +34,8 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
   @override
   void initState() {
     super.initState();
+    _fetchUserProgress(); // Llama a la función para cargar los datos del usuario
+
     _animationController = AnimationController(
       duration: Duration(milliseconds: 1200),
       vsync: this,
@@ -42,7 +49,9 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     
-    _progressAnimation = Tween<double>(begin: 0.0, end: _currentRounds / _targetRounds).animate(
+    // La animación del progreso se inicializará después de cargar los datos
+    // y se actualizará en _fetchUserProgress o didUpdateWidget
+    _progressAnimation = Tween<double>(begin: 0.0, end: 0.0).animate( // Inicialmente 0.0
       CurvedAnimation(parent: _progressAnimationController, curve: Curves.easeOutCubic),
     );
     
@@ -51,7 +60,7 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
     );
     
     _animationController.forward();
-    _progressAnimationController.forward();
+    // _progressAnimationController.forward() se llamará después de cargar los datos
   }
 
   @override
@@ -61,10 +70,66 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
     super.dispose();
   }
 
-  int get _remainingRounds => _targetRounds - _currentRounds;
+  // Función para cargar el progreso del usuario desde Firestore
+  Future<void> _fetchUserProgress() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final user = _auth.currentUser;
+    if (user == null) {
+      // Si no hay usuario logueado, no podemos cargar el progreso
+      setState(() {
+        _userProfile = null;
+        _isLoading = false;
+      });
+      print('Progreso: No hay usuario autenticado.');
+      return;
+    }
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (userDoc.exists) {
+        setState(() {
+          _userProfile = UserModel.fromFirestore(userDoc);
+          // Actualiza el valor final de la animación de progreso con los datos cargados
+          _progressAnimation = Tween<double>(
+            begin: _progressAnimation.value, // Inicia desde el valor actual
+            end: (_userProfile!.totalCalculations / _targetRounds).clamp(0.0, 1.0),
+          ).animate(
+            CurvedAnimation(parent: _progressAnimationController, curve: Curves.easeOutCubic),
+          );
+          _progressAnimationController.forward(from: 0.0); // Reinicia la animación
+        });
+      } else {
+        // Esto no debería ocurrir si LoginScreen crea el perfil, pero es un fallback
+        print('Progreso: Documento de usuario no encontrado en Firestore.');
+        setState(() {
+          _userProfile = null; // Asegura que el perfil sea nulo si no existe
+        });
+      }
+    } on FirebaseException catch (e) {
+      print('Progreso: Error de Firestore al cargar el perfil: ${e.code} - ${e.message}');
+      // Mostrar un SnackBar o mensaje de error al usuario
+    } catch (e) {
+      print('Progreso: Error desconocido al cargar el perfil: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Getters para los datos del progreso
+  int get _currentRounds => _userProfile?.totalCalculations ?? 0;
+  int get _totalPoints => _userProfile?.totalScore.toInt() ?? 0; // Convertir a int
+  int get _streak => _userProfile?.currentStreak ?? 0;
+
+  // Calculados (no de Firestore directamente)
+  int get _remainingRounds => math.max(0, _targetRounds - _currentRounds);
   int get _daysRemaining => _targetDate.difference(DateTime.now()).inDays;
-  double get _progressPercentage => (_currentRounds / _targetRounds) * 100;
-  double get _dailyProgress => (_completedToday / _dailyGoal);
+  // Eliminado: double get _progressPercentage => (_currentRounds / _targetRounds) * 100; // Esto era código muerto
+  // _dailyProgress y _completedToday se eliminan o se redefinen si se implementa lógica diaria
 
   Widget _buildProgressCard({
     required String title,
@@ -155,6 +220,21 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
   }
 
   Widget _buildCircularProgress() {
+    // Asegúrate de que _userProfile no sea nulo antes de calcular el progreso
+    double currentProgress = (_userProfile?.totalCalculations ?? 0) / _targetRounds;
+    currentProgress = currentProgress.clamp(0.0, 1.0); // Asegura que esté entre 0 y 1
+
+    // Reinicia la animación cada vez que el progreso cambia
+    if (_progressAnimationController.isCompleted || _progressAnimation.value != currentProgress) {
+      _progressAnimation = Tween<double>(
+        begin: _progressAnimation.value, // Inicia desde el valor actual
+        end: currentProgress,
+      ).animate(
+        CurvedAnimation(parent: _progressAnimationController, curve: Curves.easeOutCubic),
+      );
+      _progressAnimationController.forward(from: 0.0);
+    }
+
     return AnimatedBuilder(
       animation: _progressAnimation,
       builder: (context, child) {
@@ -189,7 +269,7 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    '${(_progressAnimation.value * 100).toInt()}%',
+                    '${(currentProgress * 100).toInt()}%', // Usa currentProgress directamente
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -221,57 +301,9 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildDailyProgressBar() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Progreso Diario',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey[700],
-              ),
-            ),
-            Text(
-              '$_completedToday / $_dailyGoal',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1E3A8A),
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 12),
-        Container(
-          height: 8,
-          decoration: BoxDecoration(
-            color: Colors.grey[200],
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: FractionallySizedBox(
-            alignment: Alignment.centerLeft,
-            widthFactor: _dailyProgress.clamp(0.0, 1.0),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                ),
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildStreakIndicator() {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center, // Centrar la racha
       children: [
         Icon(Icons.local_fire_department, color: Colors.orange, size: 24),
         SizedBox(width: 8),
@@ -317,158 +349,133 @@ class _ProgressScreenState extends State<ProgressScreen> with TickerProviderStat
           ),
         ),
       ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            children: [
-              // Header con progreso circular
-              ScaleTransition(
-                scale: _scaleAnimation,
-                child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color(0xFF1E3A8A).withOpacity(0.3),
-                        blurRadius: 20,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Tu Progreso General',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A))) // Muestra carga
+          : FadeTransition(
+              opacity: _fadeAnimation,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // Header con progreso circular
+                    ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0xFF1E3A8A).withOpacity(0.3),
+                              blurRadius: 20,
+                              offset: Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'Tu Progreso General',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 24),
+                            _buildCircularProgress(), // Usa el progreso de Firestore
+                            SizedBox(height: 24),
+                            _buildStreakIndicator(), // Usa la racha de Firestore
+                          ],
                         ),
                       ),
-                      SizedBox(height: 24),
-                      _buildCircularProgress(),
-                      SizedBox(height: 24),
-                      _buildStreakIndicator(),
-                    ],
-                  ),
-                ),
-              ),
-              
-              SizedBox(height: 24),
-              
-              // Grid de estadísticas
-              GridView.count(
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 1.1,
-                children: [
-                  _buildProgressCard(
-                    title: 'Vueltas Restantes',
-                    value: '$_remainingRounds',
-                    subtitle: 'Para alcanzar tu meta',
-                    icon: Icons.flag,
-                    color: Colors.orange,
-                  ),
-                  _buildProgressCard(
-                    title: 'Días Restantes',
-                    value: '$_daysRemaining',
-                    subtitle: 'Hasta la fecha límite',
-                    icon: Icons.calendar_today,
-                    color: Colors.red,
-                  ),
-                  _buildProgressCard(
-                    title: 'Nivel Actual',
-                    value: '$_currentLevel',
-                    subtitle: 'Sigue así para subir',
-                    icon: Icons.star,
-                    color: Colors.purple,
-                  ),
-                  _buildProgressCard(
-                    title: 'Puntos Totales',
-                    value: '$_totalPoints',
-                    subtitle: 'Puntos acumulados',
-                    icon: Icons.emoji_events,
-                    color: Colors.amber,
-                  ),
-                ],
-              ),
-              
-              SizedBox(height: 24),
-              
-              // Progreso diario
-              _buildProgressCard(
-                title: 'Hoy',
-                value: '',
-                subtitle: '',
-                icon: Icons.today,
-                color: Color(0xFF1E3A8A),
-                customContent: _buildDailyProgressBar(),
-              ),
-              
-              SizedBox(height: 24),
-              
-              // Botón de acción
-              Container(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    // Simular completar una vuelta
-                    setState(() {
-                      _currentRounds++;
-                      _completedToday++;
-                      _totalPoints += 100;
-                      if (_currentRounds % 5 == 0) {
-                        _currentLevel++;
-                      }
-                    });
-                    _progressAnimationController.reset();
-                    _progressAnimationController.forward();
+                    ),
                     
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('¡Vuelta completada! +100 puntos'),
-                        backgroundColor: Colors.green,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                    SizedBox(height: 24),
+                    
+                    // Grid de estadísticas
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: 1.1,
+                      children: [
+                        _buildProgressCard(
+                          title: 'Vueltas Restantes',
+                          value: '$_remainingRounds',
+                          subtitle: 'Para alcanzar tu meta',
+                          icon: Icons.flag,
+                          color: Colors.orange,
+                        ),
+                        _buildProgressCard(
+                          title: 'Días Restantes',
+                          value: '$_daysRemaining',
+                          subtitle: 'Hasta la fecha límite',
+                          icon: Icons.calendar_today,
+                          color: Colors.red,
+                        ),
+                        _buildProgressCard(
+                          title: 'Nivel Actual',
+                          value: 'N/A', // El nivel no está en el modelo actual
+                          subtitle: 'Sigue así para subir',
+                          icon: Icons.star,
+                          color: Colors.purple,
+                        ),
+                        _buildProgressCard(
+                          title: 'Puntos Totales',
+                          value: '$_totalPoints', // Usa puntos de Firestore
+                          subtitle: 'Puntos acumulados',
+                          icon: Icons.emoji_events,
+                          color: Colors.amber,
+                        ),
+                      ],
+                    ),
+                    
+                    SizedBox(height: 24),
+                    
+                    // Nota: Se eliminó _buildDailyProgressBar ya que requiere lógica diaria más compleja
+                    // y no está directamente en el modelo de usuario actual.
+                    
+                    // Botón de acción (se eliminó la simulación local)
+                    Container(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          // Este botón ya no simula el progreso localmente.
+                          // El progreso se actualiza desde la CalculatorScreen.
+                          // Aquí podrías, por ejemplo, navegar a la calculadora.
+                          Navigator.pushNamed(context, '/calculator');
+                        },
+                        icon: Icon(Icons.play_arrow, color: Colors.white),
+                        label: Text(
+                          'Ir a la Calculadora', // Texto actualizado
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          elevation: 8,
+                          shadowColor: Colors.green.withOpacity(0.4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                       ),
-                    );
-                  },
-                  icon: Icon(Icons.play_arrow, color: Colors.white),
-                  label: Text(
-                    'Completar Vuelta',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    elevation: 8,
-                    shadowColor: Colors.green.withOpacity(0.4),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
+            ),
+          );
   }
 }
