@@ -1,0 +1,100 @@
+# Miscellaneous
+.DS_Store
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea
+.vscode
+.vs
+.dart_tool/
+.packages
+.env
+.env.*
+.flutter-plugins-android
+.flutter-plugins-ios
+.flutter-plugins-web
+
+# Build results
+/build/
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/flutter_export_environment.sh
+/android/.gradle
+/android/local.properties
+/android/.idea
+/android/app/build
+/android/app/.cxx
+/android/app/.externalNativeBuild
+/android/app/src/main/assets/flutter_assets # If using assets, this might be generated
+/android/app/src/main/res/raw/keep.xml
+/android/app/src/main/res/raw/flutter_assets
+/android/app/src/main/res/raw/google_services.json # If you don't want to commit your google-services.json
+
+# Generated files
+/lib/generated_plugin_registrant.dart
+/lib/firebase_options.dart # If you don't want to commit your firebase_options.dart
+
+# Android specific
+*.iml
+local.properties
+.gradle/
+captures/
+.externalNativeBuild/
+.cxx/
+build/
+app/build/
+app/.cxx/
+app/.externalNativeBuild/
+
+# iOS specific
+.symlinks/
+Pods/
+.ios/
+.xcworkspace/
+xcuserdata/
+DerivedData/
+.bundle/
+*.gcno
+*.gch
+*.xccheckout
+*.xcscmblueprint
+*.xctestplan
+*.dSYM
+*.app
+*.ipa
+*.apns
+*.mobileprovision
+*.pbxuser
+*.perspectivev3
+*.xcscheme
+*.xcsettings
+*.xcscmblueprint
+*.xcodesamplecode
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/xcshareddata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/
+*.xcodeproj/xcshareddata/xcschemes/
+
+# Web specific
+/web/main.dart.js
+/web/main.dart.js.map
+/web/flutter_service_worker.js
+/web/flutter_service_worker.js.map
+/web/index.html # If you make changes to index.html during build
+
+# VS Code specific
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
+
+# IntelliJ / Android Studio specific
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Other
+*.log
+*.lock
+.env
+.env.*

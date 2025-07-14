@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "389793525566",
+    "project_id": "flutter-interes",
+    "storage_bucket": "flutter-interes.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:389793525566:android:0e5588f5c11a57bedcc66f",
+        "android_client_info": {
+          "package_name": "com.example.interest_compound_game"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBls1eU5bSIjC0S1UpfLNOXDp9_ZeneP6A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
