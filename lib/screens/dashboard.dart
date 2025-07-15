@@ -30,9 +30,9 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
 
   String get _adUnitId {
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'ca-app-pub-3940256099942544/6300978111';
+      return 'ca-app-pub-2116089172655720/3906176094';
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return 'ca-app-pub-3940256099942544/2934735716';
+      return 'ca-app-pub-2116089172655720/8273275442';
     }
     return '';
   }
@@ -445,7 +445,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                     ),
                     SizedBox(height: 12),
                     Text(
-                     '¡Hola, ${_userProfile?.displayName ?? _currentUser?.email?.split('@')[0] ?? 'Usuario'}!',
+                      _userProfile?.displayName ?? _currentUser?.email?.split('@')[0] ?? 'Usuario',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -463,7 +463,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                 ),
               ),
               _buildDrawerItem(Icons.calculate, 'Calculadora', '/calculator'),
-              _buildDrawerItem(Icons.chat, 'Chat', '/chat', isEnabled: !_isUserAnonymous), // Restringido para invitados
+              // _buildDrawerItem(Icons.chat, 'Chat', '/chat', isEnabled: false), // Deshabilitado para todos
               _buildDrawerItem(Icons.leaderboard, 'Ranking', '/ranking', isEnabled: !_isUserAnonymous), // Restringido para invitados
               _buildDrawerItem(Icons.trending_up, 'Progreso', '/progress'),
               Divider(color: Colors.white30, thickness: 1),
@@ -502,7 +502,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '¡Hola, ${_userProfile?.displayName ?? _currentUser?.email?.split('@')[0] ?? 'Usuario'}!', // Modificación aquí
+                    '¡Hola, ${_userProfile?.displayName ?? _currentUser?.email?.split('@')[0] ?? 'Usuario'}!',
                     style: TextStyle(
                       fontSize: 20, // Reducido de 24 a 20
                       fontWeight: FontWeight.bold,
@@ -552,14 +552,14 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
                       color: Colors.blue,
                       onTap: () => Navigator.pushNamed(context, '/calculator'),
                     ),
-                    _buildFeatureCard(
-                      icon: Icons.chat_bubble,
-                      title: 'Chat',
-                      subtitle: 'Conversa con otros usuarios',
-                      color: Colors.green,
-                      onTap: () => Navigator.pushNamed(context, '/chat'),
-                      isEnabled: !_isUserAnonymous, // Restringido para invitados
-                    ),
+                    // _buildFeatureCard(
+                    //   icon: Icons.chat_bubble,
+                    //   title: 'Chat',
+                    //   subtitle: 'Conversa con otros usuarios',
+                    //   color: Colors.green,
+                    //   onTap: () => Navigator.pushNamed(context, '/chat'),
+                    //   isEnabled: false, // Deshabilitado para todos
+                    // ),
                     _buildFeatureCard(
                       icon: Icons.leaderboard,
                       title: 'Ranking',

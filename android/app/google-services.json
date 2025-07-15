@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:389793525566:android:0e5588f5c11a57bedcc66f",
         "android_client_info": {
-          "package_name": "com.example.interest_compound_game"
+          "package_name": "com.interest_compound_game"
         }
       },
       "oauth_client": [
@@ -34,7 +34,7 @@
               "client_id": "389793525566-mg2qeiba0ifat2spafpu1q237ae1q9l7.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.interestCompoundGame"
+                "bundle_id": "com.interestCompoundGame"
               }
             }
           ]

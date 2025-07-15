@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Firestore
 import 'package:interest_compound_game/models/app_models.dart'; // Importa tus modelos de datos
-import 'package:google_sign_in/google_sign_in.dart'; // Importa Google Sign-In
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -18,7 +17,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _isLogin = true;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn signIn = GoogleSignIn.instance;
+  // Eliminada la instancia de GoogleSignIn
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -118,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 
-  // NUEVO: Función para manejar la lógica después de cualquier autenticación exitosa
+  // Función para manejar la lógica después de cualquier autenticación exitosa
   Future<void> _handlePostAuthLogic(User user) async {
     // Primero, asegura que las colecciones de Firestore estén configuradas
     await _createOrUpdateUserCollections(user);
@@ -128,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     Navigator.pushReplacementNamed(context, '/dashboard');
   }
 
-  // NUEVO: Función para migrar datos de un usuario invitado a su cuenta de Firebase
+  // Función para migrar datos de un usuario invitado a su cuenta de Firebase
   Future<void> _migrateGuestData(User authenticatedUser) async {
     final prefs = await SharedPreferences.getInstance();
     final isGuest = prefs.getBool('isGuest') ?? false;
@@ -208,7 +207,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 
-  // NUEVO: Función para iniciar sesión anónimamente
+  // Función para iniciar sesión anónimamente
   Future<void> _signInAnonymously() async {
     setState(() {
       _isLoading = true;
@@ -342,61 +341,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           _isLoading = false;
         });
       }
-    }
-  }
-
-  // NUEVA FUNCIÓN: Inicio de sesión con Google
-  Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      // 1. Iniciar el flujo de Google Sign-In
-      final GoogleSignInAccount? googleUser = await GoogleSignIn.instance.authenticate();
-      if (googleUser == null) {
-        // El usuario canceló el inicio de sesión con Google
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // 2. Obtener los detalles de autenticación de Google
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      // 3. Crear una credencial de Firebase con el token de Google
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.idToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // 4. Iniciar sesión en Firebase con la credencial de Google
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      print('Inicio de sesión con Google exitoso: ${userCredential.user!.email}');
-
-      // 5. Manejar lógica post-autenticación (crear/actualizar colecciones y migrar)
-      if (userCredential.user != null) {
-        await _handlePostAuthLogic(userCredential.user!);
-      }
-
-    } on FirebaseAuthException catch (e) {
-      String message;
-      if (e.code == 'account-exists-with-different-credential') {
-        message = 'Ya existe una cuenta con el mismo correo electrónico pero con diferentes credenciales de inicio de sesión.';
-      } else if (e.code == 'invalid-credential') {
-        message = 'La credencial de autenticación de Google es inválida.';
-      } else {
-        message = 'Error al iniciar sesión con Google: ${e.message}';
-      }
-      _showSnackBar(message, backgroundColor: Colors.red);
-      print('Google Sign-In Error (FirebaseAuthException): ${e.code} - ${e.message}');
-    } catch (e) {
-      _showSnackBar('Error al iniciar sesión con Google. Inténtalo de nuevo.', backgroundColor: Colors.red);
-      print('Google Sign-In Error (General): $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
@@ -539,37 +483,37 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                                         ),
                                       ),
                                       SizedBox(height: 16),
-                                      // Botón de Google Sign-In
-                                      Container(
-                                        width: double.infinity,
-                                        height: 56,
-                                        child: OutlinedButton.icon(
-                                          onPressed: _signInWithGoogle,
-                                          style: OutlinedButton.styleFrom(
-                                            side: BorderSide(color: Colors.grey[300]!, width: 1),
-                                            backgroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(16),
-                                            ),
-                                            elevation: 4,
-                                            shadowColor: Colors.black12,
-                                          ),
-                                          icon: Image.network(
-                                            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/2048px-Google_%22G%22_logo.svg.png',
-                                            height: 24,
-                                            width: 24,
-                                            errorBuilder: (context, error, stackTrace) => Icon(Icons.g_mobiledata, size: 24), // Fallback icon
-                                          ),
-                                          label: Text(
-                                            'Continuar con Google',
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.grey[700],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
+                                      // Botón de Google Sign-In ELIMINADO
+                                      // Container(
+                                      //   width: double.infinity,
+                                      //   height: 56,
+                                      //   child: OutlinedButton.icon(
+                                      //     onPressed: _signInWithGoogle,
+                                      //     style: OutlinedButton.styleFrom(
+                                      //       side: BorderSide(color: Colors.grey[300]!, width: 1),
+                                      //       backgroundColor: Colors.white,
+                                      //       shape: RoundedRectangleBorder(
+                                      //         borderRadius: BorderRadius.circular(16),
+                                      //       ),
+                                      //       elevation: 4,
+                                      //       shadowColor: Colors.black12,
+                                      //     ),
+                                      //     icon: Image.network(
+                                      //       'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/2048px-Google_%22G%22_logo.svg.png',
+                                      //       height: 24,
+                                      //       width: 24,
+                                      //       errorBuilder: (context, error, stackTrace) => Icon(Icons.g_mobiledata, size: 24), // Fallback icon
+                                      //     ),
+                                      //     label: Text(
+                                      //       'Continuar con Google',
+                                      //       style: TextStyle(
+                                      //         fontSize: 18,
+                                      //         fontWeight: FontWeight.w600,
+                                      //         color: Colors.grey[700],
+                                      //       ),
+                                      //     ),
+                                      //   ),
+                                      // ),
                                       SizedBox(height: 16),
                                       // NUEVO: Botón para continuar como invitado
                                       Container(
